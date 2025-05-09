@@ -242,10 +242,7 @@
               <input type="text" v-model="currentBdt.odometro_final" placeholder="Digite o odômetro final" />
             </div>
             
-            <div class="form-group">
-              <label>Rubrica</label>
-              <input type="text" v-model="currentBdt.rubrica" placeholder="Digite a rubrica" />
-            </div>
+            <!-- Campo de Rubrica removido, substituído pela assinatura em imagem -->
           </div>
           
           <div class="form-section">
@@ -316,11 +313,11 @@
           </div>
           
           <div class="form-section">
-            <h3>Anexar Imagem</h3>
+            <h3>Foto da Bomba de Combustível</h3>
             <div class="image-upload">
               <label for="image-upload" class="upload-button">
-                <i class="material-icons">add_photo_alternate</i>
-                <span>Selecionar Imagem</span>
+                <i class="material-icons">local_gas_station</i>
+                <span>Foto da bomba de combustível</span>
               </label>
               <input 
                 type="file" 
@@ -421,7 +418,7 @@ const filteredBdts = computed(() => {
       return dataSaida < hoje && bdt.status === 'Em aberto';
     });
   } else if (statusFilter.value === 'Concluído') {
-    return bdts.value.filter(bdt => bdt.status === 'Concluído');
+    return bdts.value.filter(bdt => bdt.status === 'Realizado' || bdt.status === 'Concluído');
   }
   
   return bdts.value;
@@ -597,50 +594,144 @@ const saveBdt = async () => {
     loading.value = true;
     
     // Primeiro, fazer upload da imagem se existir
-    let imagePath = null;
+    let publicUrl = null;
+    
     if (imageFile.value) {
-      const fileName = `bdt_${currentBdtId.value}_${Date.now()}.${imageFile.value.name.split('.').pop()}`;
-      const { data: uploadData, error: uploadError } = await $supabase.storage
-        .from('bdt_images')
-        .upload(fileName, imageFile.value);
+      try {
+        // Nome do arquivo: bdt_ID_TIMESTAMP.extensão
+        const fileName = `bdt_${currentBdtId.value}_${Date.now()}.${imageFile.value.name.split('.').pop()}`;
         
-      if (uploadError) throw uploadError;
+        // Fazer upload para o bucket 'assinatura' na pasta 'bdt'
+        const { data: uploadData, error: uploadError } = await $supabase.storage
+          .from('assinatura')
+          .upload(`bdt/${fileName}`, imageFile.value, {
+            cacheControl: '3600',
+            upsert: true
+          });
+          
+        if (uploadError) {
+          console.error('Erro no upload:', uploadError);
+          throw uploadError;
+        }
+        
+        // Obter a URL pública da imagem
+        const { data: publicData } = await $supabase.storage
+          .from('assinatura')
+          .getPublicUrl(`bdt/${fileName}`);
+        
+        publicUrl = publicData?.publicUrl;
+        console.log('Upload realizado com sucesso:', publicUrl);
+      } catch (uploadError) {
+        console.error('Erro durante o upload da imagem:', uploadError);
+        showSnackbar('Erro ao fazer upload da imagem. Verifique as permissões.');
+        throw uploadError;
+      }
+    }
+    
+    // Preparar dados para salvar na tabela
+    const dadosParaSalvar = {
+      veiculo_modelo: currentBdt.value.veiculo_modelo,
+      placa: currentBdt.value.placa,
+      data_saida: currentBdt.value.data_saida,
+      hora_saida: currentBdt.value.hora_saida,
+      odometro_inicial: currentBdt.value.odometro_inicial,
+      local_destino: currentBdt.value.local_destino,
+      horario_abastecimento: currentBdt.value.horario_abastecimento,
+      lt: currentBdt.value.lt,
+      local_abastecimento: currentBdt.value.local_abastecimento,
+      hora_chegada: currentBdt.value.hora_chegada,
+      odometro_final: currentBdt.value.odometro_final,
+      equipe: currentBdt.value.equipe,
+      nivel_oleo: currentBdt.value.nivel_oleo,
+      nivel_agua: currentBdt.value.nivel_agua,
+      nivel_fluido_freio: currentBdt.value.nivel_fluido_freio,
+      nivel_agua_limpador: currentBdt.value.nivel_agua_limpador,
+      pneus: currentBdt.value.pneus,
+      crvl_documentacao: currentBdt.value.crvl_documentacao,
+      eletrica: currentBdt.value.eletrica,
+      balanca_carregada: currentBdt.value.balanca_carregada,
+      balanca_manual: currentBdt.value.balanca_manual,
+      placas: currentBdt.value.placas,
+      cartao_despesas: currentBdt.value.cartao_despesas,
+      observacoes_gerais: currentBdt.value.observacoes_gerais
+    };
+    
+    // Adicionar URL da imagem no campo 'url' da tabela
+    if (publicUrl) {
+      dadosParaSalvar.url = publicUrl;
+      console.log('URL da imagem sendo salva:', publicUrl);
+    }
+    
+    // Definir status com base na imagem ou campos preenchidos
+    if (imageFile.value) {
+      dadosParaSalvar.status = 'Realizado';
+      console.log('Status sendo atualizado para: Realizado');
+    } else {
+      // Verificar se todos os campos necessários para concluir estão preenchidos
+      const isComplete = dadosParaSalvar.hora_saida && 
+                        dadosParaSalvar.odometro_inicial && 
+                        dadosParaSalvar.hora_chegada && 
+                        dadosParaSalvar.odometro_final;
       
-      imagePath = fileName;
+      if (isComplete) {
+        dadosParaSalvar.status = 'Concluído';
+        console.log('Status sendo atualizado para: Concluído');
+      }
     }
     
-    // Atualizar os dados do BDT
-    const updateData = { ...currentBdt.value };
-    if (imagePath) {
-      updateData.image_path = imagePath;
-    }
+    console.log('Dados sendo salvos:', dadosParaSalvar);
     
-    // Verificar se todos os campos necessários para concluir estão preenchidos
-    const isComplete = updateData.hora_saida && 
-                      updateData.odometro_inicial && 
-                      updateData.hora_chegada && 
-                      updateData.odometro_final;
-    
-    if (isComplete) {
-      updateData.status = 'Concluído';
-    }
-    
+    // Atualizar o registro no banco de dados
     const { data, error } = await $supabase
       .from('bdt_relatorio')
-      .update(updateData)
+      .update(dadosParaSalvar)
       .eq('id', currentBdtId.value)
       .select();
-      
-    if (error) throw error;
     
-    // Atualizar o BDT na lista
-    const index = bdts.value.findIndex(bdt => bdt.id === currentBdtId.value);
-    if (index !== -1 && data && data.length > 0) {
-      bdts.value[index] = data[0];
+    console.log('Resposta do Supabase:', { data, error });
+      
+    if (error) {
+      console.error('Erro ao atualizar o registro:', error);
+      throw error;
+    }
+    
+    // Verificar se a atualização foi bem-sucedida mesmo com array vazio
+    if (!data || data.length === 0) {
+      console.log('Atualização bem-sucedida, mas sem dados retornados. Buscando dados atualizados...');
+      
+      // Buscar os dados atualizados
+      const { data: updatedData, error: fetchError } = await $supabase
+        .from('bdt_relatorio')
+        .select('*')
+        .eq('id', currentBdtId.value)
+        .single();
+      
+      if (fetchError) {
+        console.error('Erro ao buscar dados atualizados:', fetchError);
+      } else if (updatedData) {
+        console.log('Dados atualizados obtidos com sucesso:', updatedData);
+        
+        // Atualizar o BDT na lista
+        const index = bdts.value.findIndex(bdt => bdt.id === currentBdtId.value);
+        if (index !== -1) {
+          bdts.value[index] = updatedData;
+        }
+      }
+    } else {
+      // Atualizar o BDT na lista com os dados retornados
+      const index = bdts.value.findIndex(bdt => bdt.id === currentBdtId.value);
+      if (index !== -1) {
+        bdts.value[index] = data[0];
+      }
     }
     
     closeBdtForm();
-    showSnackbar('Boletim atualizado com sucesso!');
+    
+    if (imageFile.value) {
+      showSnackbar('Assinatura anexada e BDT marcado como Realizado!');
+    } else {
+      showSnackbar('Boletim atualizado com sucesso!');
+    }
     
   } catch (error) {
     console.error('Erro ao salvar boletim:', error);
@@ -850,17 +941,53 @@ onMounted(async () => {
 }
 
 .refresh-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
+  background-color: #ffffff;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+  margin-top: 16px;
+  min-width: 140px;
+  height: 44px;
+  line-height: 1;
+}
+
+.refresh-button:hover {
   background-color: var(--primary-color);
   color: white;
-  border: none;
-  border-radius: 20px;
-  padding: 8px 16px;
-  margin-top: 16px;
-  cursor: pointer;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+}
+
+.refresh-button:hover .material-icons {
+  animation: spin-once 0.5s ease;
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.refresh-button:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.refresh-button .material-icons {
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
 }
 
 /* Lista de BDTs */
