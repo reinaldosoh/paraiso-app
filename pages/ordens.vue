@@ -269,7 +269,11 @@
             
             <!-- Ações da ordem com botões mais atraentes -->
             <div class="order-actions">
-              <button class="action-button details-button" @click="viewDetails(ordem.id)">
+              <button 
+                class="action-button details-button" 
+                @click="viewDetails(ordem.id)" 
+                :disabled="ordem.status === 'Realizado' || ordem.status === 'Finalizado'" 
+                :class="{'disabled-button': ordem.status === 'Realizado' || ordem.status === 'Finalizado'}">
                 <i class="material-icons">visibility</i>
                 <span>Coletas</span>
               </button>
@@ -688,7 +692,8 @@ const filteredOrdens = computed(() => {
   
   // Outros filtros
   if (statusFilter.value === 'Realizado') {
-    return ordens.value.filter(ordem => ordem.status === 'Realizado');
+    // Filtrar apenas ordens com status 'Finalizado'
+    return ordens.value.filter(ordem => ordem.status === 'Finalizado');
   } else if (statusFilter.value === 'Em aberto') {
     return ordens.value.filter(ordem => ordem.status === 'Em aberto' && !isOverdue(ordem));
   } else if (statusFilter.value === 'Em atraso') {
@@ -1835,6 +1840,18 @@ const markAsImpossibility = async () => {
 .whatsapp-button:active {
   background-color: #20bd5a;
   transform: scale(0.97);
+}
+
+.disabled-button {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+  background-color: #f5f5f5;
+  border-color: #e0e0e0;
+}
+
+.disabled-button i, .disabled-button span {
+  color: #9e9e9e;
 }
 
 .floating-button {
