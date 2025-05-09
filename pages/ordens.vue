@@ -285,8 +285,9 @@
               
               <a 
                 v-if="getRotaInfo(ordem.id) && getRotaInfo(ordem.id).whatsapp" 
-                :href="`https://wa.me/55${getRotaInfo(ordem.id).whatsapp.toString().replace(/\D/g, '')}`" 
+                :href="getWhatsAppLink(getRotaInfo(ordem.id).whatsapp)" 
                 target="_blank" 
+                rel="noopener noreferrer"
                 class="action-button whatsapp-button"
               >
                 <span class="whatsapp-text">WhatsApp</span>
@@ -671,6 +672,26 @@ const isOverdue = (ordem) => {
   hoje.setHours(0, 0, 0, 0);
   
   return dataRealizar.getTime() < hoje.getTime();
+};
+
+// Função para gerar o link do WhatsApp baseado no tipo de dispositivo
+const getWhatsAppLink = (whatsappNumber) => {
+  const formattedNumber = whatsappNumber.toString().replace(/\D/g, '');
+  
+  // Detectar se é um dispositivo móvel
+  const isMobile = () => {
+    if (typeof window === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+  
+  // Usar diferentes formatos de URL para desktop e mobile
+  if (isMobile()) {
+    // Para dispositivos móveis, usar o formato wa.me
+    return `https://wa.me/55${formattedNumber}`;
+  } else {
+    // Para desktop, usar o formato web.whatsapp.com
+    return `https://web.whatsapp.com/send?phone=55${formattedNumber}`;
+  }
 };
 
 // Filtrar ordens por status
