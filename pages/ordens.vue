@@ -283,13 +283,15 @@
                 <span>Marcar Impossibilidade</span>
               </button>
               
-              <button 
+              <a 
                 v-if="getRotaInfo(ordem.id) && getRotaInfo(ordem.id).whatsapp" 
-                @click="copyWhatsAppNumber(getRotaInfo(ordem.id).whatsapp)" 
+                :href="openWhatsApp(getRotaInfo(ordem.id).whatsapp)" 
+                target="_blank" 
+                rel="noopener noreferrer"
                 class="action-button whatsapp-button"
               >
                 <span class="whatsapp-text">WhatsApp</span>
-              </button>
+              </a>
               
               <!-- Botão de compartilhar removido -->
             </div>
@@ -672,23 +674,14 @@ const isOverdue = (ordem) => {
   return dataRealizar.getTime() < hoje.getTime();
 };
 
-// Função para copiar o número do WhatsApp para a área de transferência
-const copyWhatsAppNumber = (whatsappNumber) => {
+// Função para abrir o WhatsApp com o número formatado
+const openWhatsApp = (whatsappNumber) => {
   // Formatar o número removendo caracteres não numéricos
   const formattedNumber = whatsappNumber.toString().replace(/\D/g, '');
-  const fullNumber = `55${formattedNumber}`;
   
-  // Copiar para a área de transferência
-  navigator.clipboard.writeText(fullNumber)
-    .then(() => {
-      // Mostrar mensagem de sucesso
-      alert(`Número ${fullNumber} copiado para a área de transferência!\n\nAbra o WhatsApp e cole o número para iniciar uma conversa.`);
-    })
-    .catch(err => {
-      // Mostrar mensagem de erro
-      console.error('Erro ao copiar número:', err);
-      alert(`Não foi possível copiar o número automaticamente. O número é: ${fullNumber}`);
-    });
+  // Usar um formato alternativo que tem menos chances de ser bloqueado
+  // Tentando com whatsapp://send?phone=NUMERO que é o protocolo nativo
+  return `whatsapp://send?phone=55${formattedNumber}`;
 };
 
 // Filtrar ordens por status
