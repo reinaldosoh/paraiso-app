@@ -283,15 +283,13 @@
                 <span>Marcar Impossibilidade</span>
               </button>
               
-              <a 
+              <button 
                 v-if="getRotaInfo(ordem.id) && getRotaInfo(ordem.id).whatsapp" 
-                :href="getWhatsAppLink(getRotaInfo(ordem.id).whatsapp)" 
-                target="_blank" 
-                rel="noopener noreferrer"
+                @click="copyWhatsAppNumber(getRotaInfo(ordem.id).whatsapp)" 
                 class="action-button whatsapp-button"
               >
                 <span class="whatsapp-text">WhatsApp</span>
-              </a>
+              </button>
               
               <!-- Botão de compartilhar removido -->
             </div>
@@ -674,24 +672,23 @@ const isOverdue = (ordem) => {
   return dataRealizar.getTime() < hoje.getTime();
 };
 
-// Função para gerar o link do WhatsApp baseado no tipo de dispositivo
-const getWhatsAppLink = (whatsappNumber) => {
+// Função para copiar o número do WhatsApp para a área de transferência
+const copyWhatsAppNumber = (whatsappNumber) => {
+  // Formatar o número removendo caracteres não numéricos
   const formattedNumber = whatsappNumber.toString().replace(/\D/g, '');
+  const fullNumber = `55${formattedNumber}`;
   
-  // Detectar se é um dispositivo móvel
-  const isMobile = () => {
-    if (typeof window === 'undefined') return false;
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  };
-  
-  // Usar diferentes formatos de URL para desktop e mobile
-  if (isMobile()) {
-    // Para dispositivos móveis, usar o formato wa.me
-    return `https://wa.me/55${formattedNumber}`;
-  } else {
-    // Para desktop, usar o formato web.whatsapp.com
-    return `https://web.whatsapp.com/send?phone=55${formattedNumber}`;
-  }
+  // Copiar para a área de transferência
+  navigator.clipboard.writeText(fullNumber)
+    .then(() => {
+      // Mostrar mensagem de sucesso
+      alert(`Número ${fullNumber} copiado para a área de transferência!\n\nAbra o WhatsApp e cole o número para iniciar uma conversa.`);
+    })
+    .catch(err => {
+      // Mostrar mensagem de erro
+      console.error('Erro ao copiar número:', err);
+      alert(`Não foi possível copiar o número automaticamente. O número é: ${fullNumber}`);
+    });
 };
 
 // Filtrar ordens por status
