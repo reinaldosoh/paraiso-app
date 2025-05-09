@@ -45,6 +45,14 @@
             <i class="material-icons">check_circle</i>
             <span>Realizadas</span>
           </button>
+          <button
+            class="filter-tab" 
+            :class="{ active: statusFilter === 'impossibilidade' }" 
+            @click="statusFilter = 'impossibilidade'"
+          >
+            <i class="material-icons">report_problem</i>
+            <span>Impossibilidades</span>
+          </button>
         </div>
       </div>
       
@@ -266,9 +274,9 @@
                 <span>Coletas</span>
               </button>
               
-              <button class="action-button complete-button" v-if="!ordem.realizado" @click="markAsCompleted(ordem.id)">
-                <i class="material-icons">check_circle</i>
-                <span>Marcar Realizada</span>
+              <button class="action-button impossibility-button" v-if="!ordem.realizado && !ordem.impossibilidade" @click="openImpossibilitySheet(ordem.id)">
+                <i class="material-icons">report_problem</i>
+                <span>Marcar Impossibilidade</span>
               </button>
               
               <a 
@@ -291,7 +299,7 @@
         <i class="material-icons">refresh</i>
       </button>
       
-      <!-- Bottom Sheet para Coletas -->
+      <!-- Bottom Sheet para coletas -->
       <div class="bottom-sheet-overlay" v-if="bottomSheetVisible" @click="closeBottomSheet"></div>
       <div class="bottom-sheet" v-if="bottomSheetVisible" :class="{ 'visible': bottomSheetVisible }">
         <div class="bottom-sheet-header">
@@ -358,6 +366,42 @@
         </div>
       </div>
       
+      <!-- Bottom Sheet para impossibilidade -->
+      <div class="bottom-sheet-overlay" v-if="impossibilitySheetVisible" @click="closeImpossibilitySheet"></div>
+      <div class="bottom-sheet" v-if="impossibilitySheetVisible" :class="{ 'visible': impossibilitySheetVisible }">
+        <div class="bottom-sheet-header">
+          <h2>Registrar Impossibilidade</h2>
+          <button class="close-button" @click="closeImpossibilitySheet">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        
+        <div class="bottom-sheet-content">
+          <div class="form-group">
+            <label>Motivo da Impossibilidade <span class="required">*</span></label>
+            <select v-model="impossibilityType">
+              <option disabled value="">Selecione um motivo</option>
+              <option v-for="option in impossibilityOptions" :key="option" :value="option">{{ option }}</option>
+            </select>
+          </div>
+          
+          <div class="form-group" v-if="impossibilityType !== 'Local Fechado'">
+            <label>Responsável no local <span class="required">*</span></label>
+            <input type="text" placeholder="Digite o nome do responsável" v-model="impossibilityResponsavel">
+          </div>
+          
+          <div class="form-group">
+            <label>Observações</label>
+            <textarea placeholder="Digite observações (opcional)" v-model="impossibilityObservacoes"></textarea>
+          </div>
+          
+          <button class="save-button" @click="showImpossibilityConfirmDialog">
+            <i class="material-icons">check</i>
+            <span>Concluir e Salvar</span>
+          </button>
+        </div>
+      </div>
+      
       <!-- Diálogo de Confirmação -->
       <div class="dialog-overlay" v-if="confirmDialogVisible" @click="confirmDialogVisible = false"></div>
       <div class="confirm-dialog" v-if="confirmDialogVisible">
@@ -374,6 +418,27 @@
             <span>Cancelar</span>
           </button>
           <button class="confirm-button" @click="salvarColeta">
+            <i class="material-icons">check</i>
+            <span>Confirmar</span>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Diálogo de Confirmação de Impossibilidade -->
+      <div class="dialog-overlay" v-if="impossibilityConfirmDialogVisible" @click="impossibilityConfirmDialogVisible = false"></div>
+      <div class="confirm-dialog" v-if="impossibilityConfirmDialogVisible">
+        <div class="dialog-header">
+          <h3>Confirmar Ação</h3>
+        </div>
+        <div class="dialog-content">
+          <p>Tem certeza que deseja registrar esta impossibilidade?</p>
+        </div>
+        <div class="dialog-actions">
+          <button class="cancel-button" @click="impossibilityConfirmDialogVisible = false">
+            <i class="material-icons">close</i>
+            <span>Cancelar</span>
+          </button>
+          <button class="confirm-button" @click="markAsImpossibility">
             <i class="material-icons">check</i>
             <span>Confirmar</span>
           </button>
@@ -589,30 +654,45 @@ const formatTime = (timeString) => {
   return timeString.substring(0, 5); // Formato HH:MM
 };
 
+// Verificar se uma ordem está atrasada
+const isOverdue = (ordem) => {
+  const rota = getRotaInfo(ordem.id);
+  if (!rota || !rota.dia_arealizar) return false;
+  
+  const dataRealizar = new Date(rota.dia_arealizar);
+  const hoje = new Date();
+  
+  // Resetar horas para comparar apenas as datas
+  dataRealizar.setHours(0, 0, 0, 0);
+  hoje.setHours(0, 0, 0, 0);
+  
+  return dataRealizar.getTime() < hoje.getTime();
+};
+
 // Filtrar ordens por status
 const filteredOrdens = computed(() => {
   if (statusFilter.value === 'todos') {
     return ordens.value;
-  } else if (statusFilter.value === 'Em aberto') {
-    return ordens.value.filter(ordem => ordem.status === 'Em aberto');
-  } else if (statusFilter.value === 'Em atraso') {
-    return ordens.value.filter(ordem => {
-      // Verificar se existe rota com data passada
-      const rota = getRotaInfo(ordem.id);
-      if (!rota || !rota.dia_arealizar) return false;
-      
-      const dataRealizar = new Date(rota.dia_arealizar);
-      const hoje = new Date();
-      
-      // Resetar horas para comparar apenas as datas
-      dataRealizar.setHours(0, 0, 0, 0);
-      hoje.setHours(0, 0, 0, 0);
-      
-      return dataRealizar.getTime() < hoje.getTime() && !ordem.realizado;
-    });
-  } else if (statusFilter.value === 'Realizado') {
-    // Retornar apenas ordens com status 'Realizado'
+  }
+  
+  // Filtro de impossibilidade
+  if (statusFilter.value === 'impossibilidade') {
+    const impossibilidadeStatus = [
+      'Ausência do responsável de liberação',
+      'Local Fechado',
+      'Não há resíduos para coletar',
+      'Sem MTR'
+    ];
+    return ordens.value.filter(ordem => impossibilidadeStatus.includes(ordem.status));
+  }
+  
+  // Outros filtros
+  if (statusFilter.value === 'Realizado') {
     return ordens.value.filter(ordem => ordem.status === 'Realizado');
+  } else if (statusFilter.value === 'Em aberto') {
+    return ordens.value.filter(ordem => ordem.status === 'Em aberto' && !isOverdue(ordem));
+  } else if (statusFilter.value === 'Em atraso') {
+    return ordens.value.filter(ordem => ordem.status === 'Em aberto' && isOverdue(ordem));
   }
   
   return ordens.value;
@@ -926,6 +1006,20 @@ const salvarColeta = async () => {
       
     if (error) throw error;
     
+    // Atualizar a tabela de rotas para status "Em análise"
+    const rotaInfo = getRotaInfo(currentOrdemId.value);
+    if (rotaInfo && rotaInfo.id) {
+      const { error: rotaError } = await $supabase
+        .from('rotas')
+        .update({ status: 'Em análise' })
+        .eq('id', rotaInfo.id);
+        
+      if (rotaError) {
+        console.error('Erro ao atualizar status da rota:', rotaError);
+        // Não interromper o fluxo se houver erro na atualização da rota
+      }
+    }
+    
     // Atualizar localmente
     const index = ordens.value.findIndex(o => o.id === currentOrdemId.value);
     if (index !== -1) {
@@ -1004,6 +1098,109 @@ const shareOrdem = (ordemId) => {
   } else {
     // Fallback para navegadores que não suportam a API de compartilhamento
     alert(textoCompartilhamento);
+  }
+};
+
+// Dados para o bottomsheet de impossibilidade
+const impossibilitySheetVisible = ref(false);
+const impossibilityType = ref('');
+const impossibilityResponsavel = ref('');
+const impossibilityObservacoes = ref('');
+const currentImpossibilityOrdemId = ref(null);
+const impossibilityConfirmDialogVisible = ref(false);
+
+// Opções de impossibilidade
+const impossibilityOptions = [
+  'Ausência do responsável de liberação',
+  'Local Fechado',
+  'Não há resíduos para coletar',
+  'Sem MTR'
+];
+
+// Abrir bottomsheet de impossibilidade
+const openImpossibilitySheet = (ordemId) => {
+  currentImpossibilityOrdemId.value = ordemId;
+  impossibilityType.value = '';
+  impossibilityResponsavel.value = '';
+  impossibilityObservacoes.value = '';
+  impossibilitySheetVisible.value = true;
+};
+
+// Fechar bottomsheet de impossibilidade
+const closeImpossibilitySheet = () => {
+  impossibilitySheetVisible.value = false;
+};
+
+// Mostrar diálogo de confirmação de impossibilidade
+const showImpossibilityConfirmDialog = () => {
+  // Validar se o tipo de impossibilidade foi selecionado
+  if (!impossibilityType.value) {
+    showSnackbar('Por favor, selecione o tipo de impossibilidade.');
+    return;
+  }
+  
+  // Validar se o responsável foi informado (exceto quando Local Fechado)
+  if (impossibilityType.value !== 'Local Fechado' && !impossibilityResponsavel.value.trim()) {
+    showSnackbar('Por favor, informe o responsável no local.');
+    return;
+  }
+  
+  impossibilityConfirmDialogVisible.value = true;
+};
+
+// Marcar ordem como impossibilidade
+const markAsImpossibility = async () => {
+  try {
+    loading.value = true;
+    
+    const { error } = await $supabase
+      .from('ordem_servico')
+      .update({ 
+        status: impossibilityType.value,
+        responsavel_local: impossibilityResponsavel.value,
+        observacoes: impossibilityObservacoes.value
+      })
+      .eq('id', currentImpossibilityOrdemId.value);
+      
+    if (error) throw error;
+    
+    // Atualizar a tabela de rotas com o mesmo status da ordem_servico
+    const rotaInfo = getRotaInfo(currentImpossibilityOrdemId.value);
+    if (rotaInfo && rotaInfo.id) {
+      const { error: rotaError } = await $supabase
+        .from('rotas')
+        .update({ status: impossibilityType.value })
+        .eq('id', rotaInfo.id);
+        
+      if (rotaError) {
+        console.error('Erro ao atualizar status da rota:', rotaError);
+        // Não interromper o fluxo se houver erro na atualização da rota
+      }
+    }
+    
+    // Atualizar localmente
+    const index = ordens.value.findIndex(o => o.id === currentImpossibilityOrdemId.value);
+    if (index !== -1) {
+      ordens.value[index].status = impossibilityType.value;
+      ordens.value[index].responsavel_local = impossibilityResponsavel.value;
+      ordens.value[index].observacoes = impossibilityObservacoes.value;
+    }
+    
+    // Fechar diálogos
+    impossibilityConfirmDialogVisible.value = false;
+    impossibilitySheetVisible.value = false;
+    
+    // Fechar card
+    expandedCards.value[currentImpossibilityOrdemId.value] = false;
+    
+    // Mostrar snackbar de sucesso
+    showSnackbar('Impossibilidade registrada com sucesso!');
+    
+  } catch (error) {
+    console.error('Erro ao marcar impossibilidade:', error);
+    showSnackbar('Não foi possível registrar a impossibilidade. Tente novamente.');
+  } finally {
+    loading.value = false;
   }
 };
 </script>
@@ -1138,23 +1335,53 @@ const shareOrdem = (ordemId) => {
 }
 
 .refresh-button {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
+  background-color: #ffffff;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.08);
+  margin-top: 12px;
+  min-width: 140px;
+  height: 44px;
+  line-height: 1;
+}
+
+.refresh-button:hover {
   background-color: var(--primary-color);
   color: white;
-  border: none;
-  border-radius: 20px;
-  padding: 10px 20px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+}
+
+.refresh-button:hover .material-icons {
+  animation: spin-once 0.5s ease;
+}
+
+@keyframes spin-once {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .refresh-button:active {
-  transform: scale(0.97);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transform: translateY(0) scale(0.98);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.refresh-button .material-icons {
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
 }
 
 .orders-list {
@@ -1548,6 +1775,10 @@ const shareOrdem = (ordemId) => {
 
 .action-button i {
   font-size: 18px;
+}
+
+.impossibility-button i {
+  color: #FF9800;
 }
 
 .action-button:active {
