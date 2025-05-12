@@ -315,15 +315,15 @@
           <div class="form-section">
             <h3>Foto da Bomba de Combustível</h3>
             <div class="image-upload">
-              <label for="image-upload" class="upload-button">
+              <button type="button" class="upload-button" @click="openCamera">
                 <i class="material-icons">local_gas_station</i>
                 <span>Foto da bomba de combustível</span>
-              </label>
+              </button>
               <input 
                 type="file" 
                 id="image-upload" 
-                accept="image/*" 
-                capture="environment"
+                accept="image/jpeg, image/png" 
+                capture="camera"
                 @change="handleImageUpload" 
                 style="display: none;"
               />
@@ -577,6 +577,45 @@ const handleImageUpload = (event) => {
     imagePreview.value = e.target.result;
   };
   reader.readAsDataURL(file);
+};
+
+// Abrir a câmera diretamente
+const openCamera = () => {
+  // Verificar se estamos em um dispositivo móvel
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  const fileInput = document.getElementById('image-upload');
+  
+  if (fileInput) {
+    // Em dispositivos móveis, tentamos forçar a abertura da câmera
+    if (isMobile) {
+      // Criar um novo elemento input temporário com configurações específicas para câmera
+      const tempInput = document.createElement('input');
+      tempInput.type = 'file';
+      tempInput.accept = 'image/*';
+      tempInput.capture = 'camera'; // Forçar uso da câmera
+      
+      // Transferir o evento de change para nosso input original
+      tempInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          // Simular a seleção no input original
+          const dataTransfer = new DataTransfer();
+          dataTransfer.items.add(e.target.files[0]);
+          fileInput.files = dataTransfer.files;
+          
+          // Disparar o evento change manualmente
+          const event = new Event('change', { bubbles: true });
+          fileInput.dispatchEvent(event);
+        }
+      });
+      
+      // Clicar no input temporário para abrir a câmera
+      tempInput.click();
+    } else {
+      // Em desktop, usamos o input normal
+      fileInput.click();
+    }
+  }
 };
 
 // Remover imagem
