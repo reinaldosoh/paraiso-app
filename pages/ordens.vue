@@ -1048,6 +1048,47 @@ const salvarColeta = async () => {
       ordens.value[index].status = 'Realizado';
     }
     
+    // Enviar dados para o webhook
+    try {
+      // Preparar os dados no formato especificado
+      const ordem = ordens.value.find(o => o.id === currentOrdemId.value);
+      const clienteNome = getClienteNome(ordem.cliente_id);
+      
+      // Formatar os dados de MTR, grupo e peso
+      const mtrGrupoPeso = mtrItems.value.map(item => {
+        return `MTR: ${item.mtr} - ${item.grupo} - PESO: ${item.peso}`;
+      }).join(' | ');
+      
+      // Formatar a data no formato YYYY-MM-DD
+      const dataRealizacao = new Date().toISOString().split('T')[0];
+      
+      // Montar o body da requisição
+      const webhookData = {
+        nome_cliente: clienteNome,
+        mtr_grupo_peso: mtrGrupoPeso,
+        data_realizacao: dataRealizacao
+      };
+      
+      // Enviar para o webhook
+      const webhookResponse = await fetch('https://n8nwebhook.paraisoambiental.com.br/webhook/59eae245-4434-412f-a5f3-2eea3bf8e1e5', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookData)
+      });
+      
+      if (!webhookResponse.ok) {
+        console.warn('Aviso: Webhook retornou status', webhookResponse.status);
+        // Não interromper o fluxo se houver erro no webhook
+      } else {
+        console.log('Webhook enviado com sucesso');
+      }
+    } catch (webhookError) {
+      console.warn('Aviso: Erro ao enviar webhook:', webhookError);
+      // Não interromper o fluxo principal se houver erro no webhook
+    }
+    
     // Fechar diálogos
     confirmDialogVisible.value = false;
     bottomSheetVisible.value = false;

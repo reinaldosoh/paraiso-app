@@ -323,6 +323,7 @@
                 type="file" 
                 id="image-upload" 
                 accept="image/*" 
+                capture="environment"
                 @change="handleImageUpload" 
                 style="display: none;"
               />
