@@ -1,5 +1,22 @@
 <template>
   <div class="mobile-container">
+    <!-- Alerta customizado para dados incorretos -->
+    <div v-if="showAlert" class="custom-alert-overlay">
+      <div class="custom-alert">
+        <div class="alert-header">
+          <i class="material-icons" style="color: #f44336; font-size: 32px;">error</i>
+          <h3>Dados Incorretos</h3>
+        </div>
+        <div class="alert-body">
+          <p>Falha ao fazer login. Verifique suas credenciais.</p>
+        </div>
+        <div class="alert-footer">
+          <button @click="confirmAlert" class="btn confirm-btn ripple error-btn">
+            <span>Confirmo que vou revisar os dados</span>
+          </button>
+        </div>
+      </div>
+    </div>
     
     <!-- Conteúdo principal -->
     <div class="page-content">
@@ -142,6 +159,7 @@ const loading = ref(false);
 const googleLoading = ref(false);
 const rememberMe = ref(false);
 const currentTime = ref('');
+const showAlert = ref(false);
 
 // Atualizar o horário atual
 const updateTime = () => {
@@ -165,18 +183,22 @@ onMounted(() => {
 const handleLogin = async () => {
   if (!email.value || !password.value) return;
   
+  loading.value = true;
+  
   try {
-    loading.value = true;
-    
     // Configurar opções de persistência da sessão
-    // Sempre persistir a sessão independentemente da opção 'lembrar-me'
-    // A opção 'lembrar-me' será usada para exibir o email na próxima vez
-    const { error } = await client.auth.signInWithPassword({
+    const { data, error } = await client.auth.signInWithPassword({
       email: email.value,
       password: password.value
     });
     
-    if (error) throw error;
+    // Verificar se houve erro
+    if (error) {
+      console.error('Erro ao fazer login:', error.message);
+      // Mostrar o alerta customizado para dados incorretos
+      showAlert.value = true;
+      return; // Sair da função para não executar o código de sucesso
+    }
     
     // Se a opção 'lembrar-me' estiver marcada, salvar o email no localStorage
     if (rememberMe.value && process.client) {
@@ -188,29 +210,45 @@ const handleLogin = async () => {
     
     // Login bem-sucedido, redirecionar para a página inicial
     router.push('/home');
-  } catch (error: any) {
-    console.error('Erro ao fazer login:', error.message);
-    alert('Falha ao fazer login. Verifique suas credenciais.');
+  } catch (e) {
+    // Este catch é apenas para erros inesperados que não são tratados pelo Supabase
+    console.error('Erro inesperado:', e);
+    showAlert.value = true;
   } finally {
     loading.value = false;
   }
 };
 
+// Função para confirmar o alerta e resetar os campos
+const confirmAlert = () => {
+  showAlert.value = false;
+  // Resetar os campos de email e senha
+  email.value = '';
+  password.value = '';
+};
+
 const loginWithGoogle = async () => {
+  googleLoading.value = true;
+  
   try {
-    googleLoading.value = true;
-    
-    const { error } = await client.auth.signInWithOAuth({
+    const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`
       }
     });
     
-    if (error) throw error;
-  } catch (error: any) {
-    console.error('Erro ao fazer login com Google:', error.message);
-    alert('Falha ao fazer login com Google');
+    // Verificar se houve erro
+    if (error) {
+      console.error('Erro ao fazer login com Google:', error.message);
+      // Mostrar o alerta customizado para dados incorretos
+      showAlert.value = true;
+      return; // Sair da função para não executar o código de sucesso
+    }
+  } catch (e) {
+    // Este catch é apenas para erros inesperados que não são tratados pelo Supabase
+    console.error('Erro inesperado:', e);
+    showAlert.value = true;
   } finally {
     googleLoading.value = false;
   }
@@ -289,5 +327,97 @@ const loginWithGoogle = async () => {
 
 .logo-animation {
   animation: pulse 3s infinite ease-in-out;
+}
+/* Estilos para o alerta customizado */
+.custom-alert-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.custom-alert {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  animation: slide-up 0.3s ease-out;
+}
+
+.alert-header {
+  padding: 16px;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.alert-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #333;
+}
+
+.alert-body {
+  padding: 20px 16px;
+}
+
+.alert-body p {
+  margin: 8px 0;
+  font-size: 15px;
+  color: #555;
+}
+
+.alert-footer {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid #e9ecef;
+}
+
+.confirm-btn {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.confirm-btn:hover {
+  background-color: #0a6a35;
+  transform: translateY(-2px);
+}
+
+.error-btn {
+  background-color: #f44336;
+}
+
+.error-btn:hover {
+  background-color: #d32f2f;
+}
+
+
+
+@keyframes slide-up {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 </style>
