@@ -1,21 +1,14 @@
 <template>
   <div class="mobile-container">
-    <!-- Alerta customizado para dados incorretos -->
-    <div v-if="showAlert" class="custom-alert-overlay">
-      <div class="custom-alert">
-        <div class="alert-header">
-          <i class="material-icons" style="color: #f44336; font-size: 32px;">error</i>
-          <h3>Dados Incorretos</h3>
-        </div>
-        <div class="alert-body">
-          <p>Falha ao fazer login. Verifique suas credenciais.</p>
-        </div>
-        <div class="alert-footer">
-          <button @click="confirmAlert" class="btn confirm-btn ripple error-btn">
-            <span>Confirmo que vou revisar os dados</span>
-          </button>
-        </div>
+    <!-- Alerta de erro fixo no topo -->
+    <div v-if="errorMessage" class="error-banner">
+      <div class="error-content">
+        <i class="material-icons">error</i>
+        <span>{{ errorMessage }}</span>
       </div>
+      <button @click="errorMessage = ''; email = ''; password = ''" class="error-close">
+        <span>Entendi, vou revisar</span>
+      </button>
     </div>
     
     <!-- Conteúdo principal -->
@@ -159,7 +152,7 @@ const loading = ref(false);
 const googleLoading = ref(false);
 const rememberMe = ref(false);
 const currentTime = ref('');
-const showAlert = ref(false);
+const errorMessage = ref('');
 
 // Atualizar o horário atual
 const updateTime = () => {
@@ -180,57 +173,47 @@ onMounted(() => {
   setInterval(updateTime, 60000); // Atualiza a cada minuto
 });
 
+// Função para lidar com o login
 const handleLogin = async () => {
   if (!email.value || !password.value) return;
   
-  loading.value = true;
-  
   try {
-    // Configurar opções de persistência da sessão
+    loading.value = true;
+    
     const { data, error } = await client.auth.signInWithPassword({
       email: email.value,
       password: password.value
     });
     
-    // Verificar se houve erro
     if (error) {
-      console.error('Erro ao fazer login:', error.message);
-      // Mostrar o alerta customizado para dados incorretos
-      showAlert.value = true;
-      return; // Sair da função para não executar o código de sucesso
+      errorMessage.value = 'Credenciais inválidas. Verifique seu email e senha.';
+      console.error('Erro de login:', error.message);
+      return;
     }
     
     // Se a opção 'lembrar-me' estiver marcada, salvar o email no localStorage
     if (rememberMe.value && process.client) {
       localStorage.setItem('paraiso-remembered-email', email.value);
     } else if (process.client) {
-      // Se não estiver marcada, remover qualquer email salvo anteriormente
       localStorage.removeItem('paraiso-remembered-email');
     }
     
     // Login bem-sucedido, redirecionar para a página inicial
     router.push('/home');
   } catch (e) {
-    // Este catch é apenas para erros inesperados que não são tratados pelo Supabase
+    errorMessage.value = 'Erro ao tentar fazer login. Tente novamente.';
     console.error('Erro inesperado:', e);
-    showAlert.value = true;
   } finally {
     loading.value = false;
   }
 };
 
-// Função para confirmar o alerta e resetar os campos
-const confirmAlert = () => {
-  showAlert.value = false;
-  // Resetar os campos de email e senha
-  email.value = '';
-  password.value = '';
-};
+
 
 const loginWithGoogle = async () => {
-  googleLoading.value = true;
-  
   try {
+    googleLoading.value = true;
+    
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -238,17 +221,13 @@ const loginWithGoogle = async () => {
       }
     });
     
-    // Verificar se houve erro
     if (error) {
-      console.error('Erro ao fazer login com Google:', error.message);
-      // Mostrar o alerta customizado para dados incorretos
-      showAlert.value = true;
-      return; // Sair da função para não executar o código de sucesso
+      errorMessage.value = 'Erro ao fazer login com Google. Tente novamente.';
+      console.error('Erro de login Google:', error.message);
     }
   } catch (e) {
-    // Este catch é apenas para erros inesperados que não são tratados pelo Supabase
+    errorMessage.value = 'Erro ao conectar com Google. Tente novamente.';
     console.error('Erro inesperado:', e);
-    showAlert.value = true;
   } finally {
     googleLoading.value = false;
   }
@@ -328,96 +307,56 @@ const loginWithGoogle = async () => {
 .logo-animation {
   animation: pulse 3s infinite ease-in-out;
 }
-/* Estilos para o alerta customizado */
-.custom-alert-overlay {
+/* Estilo para o banner de erro */
+.error-banner {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.custom-alert {
-  background-color: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  overflow: hidden;
-  animation: slide-up 0.3s ease-out;
-}
-
-.alert-header {
-  padding: 16px;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #e9ecef;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.alert-header h3 {
-  margin: 0;
-  font-size: 18px;
-  color: #333;
-}
-
-.alert-body {
-  padding: 20px 16px;
-}
-
-.alert-body p {
-  margin: 8px 0;
-  font-size: 15px;
-  color: #555;
-}
-
-.alert-footer {
-  padding: 16px;
-  display: flex;
-  justify-content: center;
-  border-top: 1px solid #e9ecef;
-}
-
-.confirm-btn {
-  background-color: var(--primary-color);
+  background-color: #f44336;
   color: white;
+  padding: 12px 16px;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: slide-down 0.3s ease-out;
+}
+
+.error-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-content i {
+  font-size: 20px;
+}
+
+.error-close {
+  background-color: white;
+  color: #f44336;
   border: none;
-  padding: 12px 24px;
-  border-radius: 8px;
+  padding: 8px 16px;
+  border-radius: 4px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  align-self: flex-end;
+  transition: all 0.2s ease;
 }
 
-.confirm-btn:hover {
-  background-color: #0a6a35;
+.error-close:hover {
+  background-color: #f8f8f8;
   transform: translateY(-2px);
 }
 
-.error-btn {
-  background-color: #f44336;
-}
-
-.error-btn:hover {
-  background-color: #d32f2f;
-}
-
-
-
-@keyframes slide-up {
+@keyframes slide-down {
   from {
-    transform: translateY(50px);
-    opacity: 0;
+    transform: translateY(-100%);
   }
   to {
     transform: translateY(0);
-    opacity: 1;
   }
 }
 </style>
