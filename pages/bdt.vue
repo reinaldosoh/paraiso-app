@@ -319,14 +319,17 @@
                 <i class="material-icons">local_gas_station</i>
                 <span>Foto da bomba de combustível</span>
               </button>
+              <!-- Input oculto para upload de imagem -->
               <input 
-                type="file" 
                 id="image-upload" 
-                accept="image/jpeg, image/png" 
-                capture="camera"
+                type="file" 
+                accept="image/*" 
                 @change="handleImageUpload" 
                 style="display: none;"
               />
+              <div class="camera-hint" style="margin-top: 8px; color: #888; font-size: 13px;">
+                Se aparecer opção, selecione <b>Câmera</b> para tirar a foto na hora.
+              </div>
               <div v-if="imagePreview" class="image-preview">
                 <img :src="imagePreview" alt="Preview" />
                 <button class="remove-image" @click="removeImage">
@@ -589,24 +592,53 @@ const openCamera = () => {
   if (fileInput) {
     // Em dispositivos móveis, tentamos forçar a abertura da câmera
     if (isMobile) {
+      // Remover qualquer input temporário anterior que possa existir
+      const oldTempInput = document.getElementById('temp-camera-input');
+      if (oldTempInput) {
+        oldTempInput.remove();
+      }
+      
       // Criar um novo elemento input temporário com configurações específicas para câmera
       const tempInput = document.createElement('input');
+      tempInput.id = 'temp-camera-input';
       tempInput.type = 'file';
       tempInput.accept = 'image/*';
-      tempInput.capture = 'camera'; // Forçar uso da câmera
+      
+      // Forçar o uso da câmera traseira com diferentes atributos para maior compatibilidade
+      tempInput.setAttribute('capture', 'environment');
+      tempInput.setAttribute('camera', 'environment');
+      
+      // Esconder o input temporário mas mantê-lo no DOM
+      tempInput.style.position = 'absolute';
+      tempInput.style.visibility = 'hidden';
+      tempInput.style.top = '-9999px';
+      document.body.appendChild(tempInput);
       
       // Transferir o evento de change para nosso input original
       tempInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
-          // Simular a seleção no input original
-          const dataTransfer = new DataTransfer();
-          dataTransfer.items.add(e.target.files[0]);
-          fileInput.files = dataTransfer.files;
-          
-          // Disparar o evento change manualmente
-          const event = new Event('change', { bubbles: true });
-          fileInput.dispatchEvent(event);
+          try {
+            // Simular a seleção no input original
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(e.target.files[0]);
+            fileInput.files = dataTransfer.files;
+            
+            // Disparar o evento change manualmente
+            const event = new Event('change', { bubbles: true });
+            fileInput.dispatchEvent(event);
+            
+            console.log('Imagem da câmera capturada com sucesso');
+          } catch (error) {
+            console.error('Erro ao transferir arquivo da câmera:', error);
+          }
         }
+        
+        // Remover o input temporário após um pequeno delay para garantir que o evento foi processado
+        setTimeout(() => {
+          if (document.body.contains(tempInput)) {
+            tempInput.remove();
+          }
+        }, 500);
       });
       
       // Clicar no input temporário para abrir a câmera
@@ -615,6 +647,8 @@ const openCamera = () => {
       // Em desktop, usamos o input normal
       fileInput.click();
     }
+  } else {
+    console.error('Elemento de input para upload de imagem não encontrado');
   }
 };
 
@@ -810,14 +844,48 @@ const refreshData = async () => {
     loading.value = true;
     lastRefresh.value = new Date();
     
+    // Obter o UUID do usuário autenticado
+    const { data: userData } = await $supabase.auth.getUser();
+    const userUuid = userData?.user?.id;
+    
+    if (!userUuid) {
+      console.error('UUID do usuário não encontrado');
+      showSnackbar('Erro de autenticação. Faça login novamente.');
+      return;
+    }
+    
+    // Buscar o ID do usuário na tabela usuario usando o UUID
+    const { data: usuarioData, error: usuarioError } = await $supabase
+      .from('usuario')
+      .select('id')
+      .eq('uuid', userUuid)
+      .single();
+      
+    if (usuarioError) {
+      console.error('Erro ao buscar ID do usuário:', usuarioError);
+      throw usuarioError;
+    }
+    
+    if (!usuarioData) {
+      console.error('Usuário não encontrado na tabela usuario');
+      showSnackbar('Erro ao carregar dados. Usuário não encontrado.');
+      return;
+    }
+    
+    const usuarioId = usuarioData.id;
+    console.log('Filtrando BDTs para o usuário ID:', usuarioId);
+    
+    // Buscar BDTs filtrados pelo ID do usuário
     const { data, error } = await $supabase
       .from('bdt_relatorio')
       .select('*')
+      .eq('usuario_id', usuarioId)
       .order('created_at', { ascending: false });
       
     if (error) throw error;
     
     bdts.value = data || [];
+    console.log(`Carregados ${bdts.value.length} BDTs para o usuário ID ${usuarioId}`);
     
   } catch (error) {
     console.error('Erro ao carregar boletins:', error);
