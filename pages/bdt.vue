@@ -315,22 +315,47 @@
           <div class="form-section">
             <h3>Foto da Bomba de Combustível</h3>
             <div class="image-upload">
-              <button type="button" class="upload-button" @click="openCamera">
+              <!-- Botão principal para abrir a câmera -->
+              <button type="button" class="upload-button camera-button" @click="openCamera">
                 <i class="material-icons">local_gas_station</i>
                 <span>Foto da bomba de combustível</span>
               </button>
-              <!-- Input oculto para upload de imagem com configurações para forçar a câmera -->
+              
+              <!-- Botão alternativo para abrir a galeria (visível apenas quando necessário) -->
+              <button 
+                v-if="showGalleryOption" 
+                type="button" 
+                class="upload-button gallery-button" 
+                @click="openGallery"
+                style="margin-top: 10px; background-color: #f5f5f5; color: #555;"
+              >
+                <i class="material-icons">photo_library</i>
+                <span>Selecionar da galeria</span>
+              </button>
+              
+              <!-- Input para câmera com atributo capture -->
               <input 
-                id="image-upload" 
+                id="camera-input" 
                 type="file" 
                 accept="image/*" 
                 capture="environment"
                 @change="handleImageUpload" 
                 style="display: none;"
               />
+              
+              <!-- Input separado para galeria sem atributo capture -->
+              <input 
+                id="gallery-input" 
+                type="file" 
+                accept="image/*" 
+                @change="handleImageUpload" 
+                style="display: none;"
+              />
+              
               <div class="camera-hint" style="margin-top: 8px; color: #888; font-size: 13px;">
-                Se aparecer opção, selecione <b>Câmera</b> para tirar a foto na hora.
+                Caso a câmera não abra automaticamente, tente a opção de galeria e depois selecione <b>Câmera</b>.
               </div>
+              
               <div v-if="imagePreview" class="image-preview">
                 <img :src="imagePreview" alt="Preview" />
                 <button class="remove-image" @click="removeImage">
@@ -405,6 +430,8 @@ const currentBdtId = ref(null);
 const currentBdt = ref({});
 const imageFile = ref(null);
 const imagePreview = ref(null);
+const showGalleryOption = ref(false);
+const cameraAttempts = ref(0);
 
 // Variáveis para o snackbar
 const snackbarVisible = ref(false);
@@ -645,9 +672,9 @@ const handleImageUpload = (event) => {
   reader.readAsDataURL(file);
 };
 
-// Abrir a câmera diretamente
+// Abrir a câmera diretamente usando uma abordagem simplificada
 const openCamera = () => {
-  // Detectar se estamos em uma WebView do Flutter ou em um dispositivo móvel
+  // Detectar ambiente
   const isFlutterWebView = /wv|Flutter/.test(navigator.userAgent);
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
@@ -655,102 +682,48 @@ const openCamera = () => {
   console.log('Detectado como WebView Flutter:', isFlutterWebView);
   console.log('Detectado como dispositivo móvel:', isMobile);
   
-  const fileInput = document.getElementById('image-upload');
+  // Incrementar contador de tentativas
+  cameraAttempts.value++;
   
-  if (fileInput) {
-    // Em WebView do Flutter ou dispositivos móveis, forçar a abertura da câmera
-    if (isMobile || isFlutterWebView) {
-      try {
-        // Remover qualquer input temporário anterior
-        const oldTempInput = document.getElementById('temp-camera-input');
-        if (oldTempInput) {
-          oldTempInput.remove();
+  // Mostrar opção de galeria após a primeira tentativa ou se estiver em WebView
+  if (cameraAttempts.value > 1 || isFlutterWebView) {
+    showGalleryOption.value = true;
+  }
+  
+  // Usar o input específico para câmera
+  const cameraInput = document.getElementById('camera-input');
+  
+  if (cameraInput) {
+    try {
+      // Tentar abrir diretamente a câmera
+      cameraInput.click();
+      
+      // Definir um timeout para mostrar a opção de galeria se o usuário não selecionar nada
+      setTimeout(() => {
+        // Se ainda não tiver uma imagem selecionada, mostrar opção de galeria
+        if (!imageFile.value) {
+          showGalleryOption.value = true;
         }
-        
-        // Criar um novo elemento input temporário com configurações específicas para câmera
-        const tempInput = document.createElement('input');
-        tempInput.id = 'temp-camera-input';
-        tempInput.type = 'file';
-        
-        // Configurações mais agressivas para forçar a câmera
-        tempInput.accept = 'image/*';
-        
-        // Usar várias abordagens para forçar a câmera (para maior compatibilidade)
-        tempInput.setAttribute('capture', 'environment'); // Padrão mais recente
-        tempInput.setAttribute('camera', 'environment'); // Legado
-        tempInput.capture = 'environment'; // Propriedade direta
-        
-        // Para WebViews do Flutter, tentar ser ainda mais específico
-        if (isFlutterWebView) {
-          // Alguns WebViews podem precisar de configurações mais explícitas
-          tempInput.setAttribute('accept', 'image/jpeg,image/png,image/jpg');
-          tempInput.setAttribute('data-force-camera', 'true');
-          console.log('Aplicando configurações específicas para WebView');
-        }
-        
-        // Esconder o input mas mantê-lo no DOM
-        tempInput.style.position = 'absolute';
-        tempInput.style.visibility = 'hidden';
-        tempInput.style.top = '-9999px';
-        tempInput.style.left = '-9999px';
-        tempInput.style.height = '1px';
-        tempInput.style.width = '1px';
-        document.body.appendChild(tempInput);
-        
-        // Transferir o evento de change para nosso input original
-        tempInput.addEventListener('change', (e) => {
-          if (e.target.files && e.target.files[0]) {
-            try {
-              // Simular a seleção no input original
-              const dataTransfer = new DataTransfer();
-              dataTransfer.items.add(e.target.files[0]);
-              fileInput.files = dataTransfer.files;
-              
-              // Disparar o evento change manualmente
-              const event = new Event('change', { bubbles: true });
-              fileInput.dispatchEvent(event);
-              
-              console.log('Imagem da câmera capturada com sucesso');
-            } catch (error) {
-              console.error('Erro ao transferir arquivo da câmera:', error);
-              // Fallback: se não conseguir transferir, chamar diretamente o handler
-              if (e.target.files[0]) {
-                const file = e.target.files[0];
-                imageFile.value = file;
-                
-                // Criar preview da imagem
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                  imagePreview.value = e.target.result;
-                };
-                reader.readAsDataURL(file);
-              }
-            }
-          }
-          
-          // Remover o input temporário após um delay
-          setTimeout(() => {
-            if (document.body.contains(tempInput)) {
-              tempInput.remove();
-            }
-          }, 500);
-        });
-        
-        // Clicar no input temporário para abrir a câmera
-        console.log('Clicando no input temporário para abrir a câmera...');
-        tempInput.click();
-      } catch (error) {
-        console.error('Erro ao tentar abrir a câmera:', error);
-        // Fallback para o método padrão
-        fileInput.click();
-      }
-    } else {
-      // Em desktop, usamos o input normal
-      fileInput.click();
+      }, 5000); // 5 segundos
+    } catch (error) {
+      console.error('Erro ao tentar abrir a câmera:', error);
+      showGalleryOption.value = true;
     }
   } else {
-    console.error('Elemento de input para upload de imagem não encontrado');
+    console.error('Elemento de input para câmera não encontrado');
+    showGalleryOption.value = true;
   }
+};
+
+// Abrir a galeria como alternativa
+const openGallery = () => {
+  const galleryInput = document.getElementById('gallery-input');
+  
+  if (galleryInput) {
+    galleryInput.click();
+  } else {
+    console.error('Elemento de input para galeria não encontrado');
+  }  
 };
 
 // Remover imagem
