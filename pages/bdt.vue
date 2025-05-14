@@ -319,11 +319,12 @@
                 <i class="material-icons">local_gas_station</i>
                 <span>Foto da bomba de combustível</span>
               </button>
-              <!-- Input oculto para upload de imagem -->
+              <!-- Input oculto para upload de imagem com configurações para forçar a câmera -->
               <input 
                 id="image-upload" 
                 type="file" 
                 accept="image/*" 
+                capture="environment"
                 @change="handleImageUpload" 
                 style="display: none;"
               />
@@ -348,10 +349,16 @@
             ></textarea>
           </div>
           
-          <button class="save-button" @click="saveBdt">
-            <i class="material-icons">check</i>
-            <span>Salvar Boletim</span>
-          </button>
+          <div class="button-group">
+            <button class="draft-button" @click="saveDraft">
+              <i class="material-icons">save</i>
+              <span>Salvar rascunho</span>
+            </button>
+            <button class="save-button" @click="saveBdt(true)">
+              <i class="material-icons">check</i>
+              <span>Enviar ao banco</span>
+            </button>
+          </div>
         </div>
       </div>
       
@@ -537,6 +544,7 @@ const preencherBdt = async (id) => {
   try {
     loading.value = true;
     
+    // Buscar dados do banco
     const { data, error } = await $supabase
       .from('bdt_relatorio')
       .select('*')
@@ -545,11 +553,66 @@ const preencherBdt = async (id) => {
       
     if (error) throw error;
     
+    // Verificar se existe rascunho salvo no localStorage
+    const savedDraft = localStorage.getItem(`bdt_draft_${id}`);
+    let hasDraft = false;
+    
     currentBdtId.value = id;
-    currentBdt.value = { ...data };
+    
+    if (savedDraft) {
+      try {
+        const draftData = JSON.parse(savedDraft);
+        const lastUpdated = new Date(draftData.lastUpdated);
+        const now = new Date();
+        
+        // Verificar se o rascunho é recente (menos de 7 dias)
+        const daysOld = Math.floor((now - lastUpdated) / (1000 * 60 * 60 * 24));
+        
+        if (daysOld < 7) {
+          // Perguntar ao usuário se deseja carregar o rascunho
+          const confirmLoad = window.confirm(
+            `Existe um rascunho salvo de ${daysOld === 0 ? 'hoje' : daysOld === 1 ? 'ontem' : `${daysOld} dias atrás`}. \n\nDeseja carregar este rascunho?`
+          );
+          
+          if (confirmLoad) {
+            // Remover a propriedade lastUpdated antes de atribuir ao currentBdt
+            delete draftData.lastUpdated;
+            currentBdt.value = { ...draftData };
+            hasDraft = true;
+            showSnackbar('Rascunho carregado com sucesso!');
+          } else {
+            // Se o usuário não quiser carregar o rascunho, usar dados do banco
+            currentBdt.value = { ...data };
+            // Perguntar se deseja excluir o rascunho
+            const confirmDelete = window.confirm('Deseja excluir o rascunho salvo?');
+            if (confirmDelete) {
+              localStorage.removeItem(`bdt_draft_${id}`);
+            }
+          }
+        } else {
+          // Rascunho muito antigo, usar dados do banco e excluir rascunho
+          currentBdt.value = { ...data };
+          localStorage.removeItem(`bdt_draft_${id}`);
+        }
+      } catch (e) {
+        console.error('Erro ao processar rascunho:', e);
+        currentBdt.value = { ...data };
+      }
+    } else {
+      // Sem rascunho, usar dados do banco
+      currentBdt.value = { ...data };
+    }
+    
     imagePreview.value = null;
     imageFile.value = null;
     bdtFormVisible.value = true;
+    
+    // Se tiver carregado um rascunho, mostrar mensagem informativa
+    if (hasDraft) {
+      setTimeout(() => {
+        showSnackbar('Lembre-se de clicar em "Enviar ao banco" para salvar permanentemente.');
+      }, 2000);
+    }
     
   } catch (error) {
     console.error('Erro ao carregar dados do boletim:', error);
@@ -584,65 +647,103 @@ const handleImageUpload = (event) => {
 
 // Abrir a câmera diretamente
 const openCamera = () => {
-  // Verificar se estamos em um dispositivo móvel
+  // Detectar se estamos em uma WebView do Flutter ou em um dispositivo móvel
+  const isFlutterWebView = /wv|Flutter/.test(navigator.userAgent);
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  
+  console.log('User Agent:', navigator.userAgent);
+  console.log('Detectado como WebView Flutter:', isFlutterWebView);
+  console.log('Detectado como dispositivo móvel:', isMobile);
   
   const fileInput = document.getElementById('image-upload');
   
   if (fileInput) {
-    // Em dispositivos móveis, tentamos forçar a abertura da câmera
-    if (isMobile) {
-      // Remover qualquer input temporário anterior que possa existir
-      const oldTempInput = document.getElementById('temp-camera-input');
-      if (oldTempInput) {
-        oldTempInput.remove();
-      }
-      
-      // Criar um novo elemento input temporário com configurações específicas para câmera
-      const tempInput = document.createElement('input');
-      tempInput.id = 'temp-camera-input';
-      tempInput.type = 'file';
-      tempInput.accept = 'image/*';
-      
-      // Forçar o uso da câmera traseira com diferentes atributos para maior compatibilidade
-      tempInput.setAttribute('capture', 'environment');
-      tempInput.setAttribute('camera', 'environment');
-      
-      // Esconder o input temporário mas mantê-lo no DOM
-      tempInput.style.position = 'absolute';
-      tempInput.style.visibility = 'hidden';
-      tempInput.style.top = '-9999px';
-      document.body.appendChild(tempInput);
-      
-      // Transferir o evento de change para nosso input original
-      tempInput.addEventListener('change', (e) => {
-        if (e.target.files && e.target.files[0]) {
-          try {
-            // Simular a seleção no input original
-            const dataTransfer = new DataTransfer();
-            dataTransfer.items.add(e.target.files[0]);
-            fileInput.files = dataTransfer.files;
-            
-            // Disparar o evento change manualmente
-            const event = new Event('change', { bubbles: true });
-            fileInput.dispatchEvent(event);
-            
-            console.log('Imagem da câmera capturada com sucesso');
-          } catch (error) {
-            console.error('Erro ao transferir arquivo da câmera:', error);
-          }
+    // Em WebView do Flutter ou dispositivos móveis, forçar a abertura da câmera
+    if (isMobile || isFlutterWebView) {
+      try {
+        // Remover qualquer input temporário anterior
+        const oldTempInput = document.getElementById('temp-camera-input');
+        if (oldTempInput) {
+          oldTempInput.remove();
         }
         
-        // Remover o input temporário após um pequeno delay para garantir que o evento foi processado
-        setTimeout(() => {
-          if (document.body.contains(tempInput)) {
-            tempInput.remove();
+        // Criar um novo elemento input temporário com configurações específicas para câmera
+        const tempInput = document.createElement('input');
+        tempInput.id = 'temp-camera-input';
+        tempInput.type = 'file';
+        
+        // Configurações mais agressivas para forçar a câmera
+        tempInput.accept = 'image/*';
+        
+        // Usar várias abordagens para forçar a câmera (para maior compatibilidade)
+        tempInput.setAttribute('capture', 'environment'); // Padrão mais recente
+        tempInput.setAttribute('camera', 'environment'); // Legado
+        tempInput.capture = 'environment'; // Propriedade direta
+        
+        // Para WebViews do Flutter, tentar ser ainda mais específico
+        if (isFlutterWebView) {
+          // Alguns WebViews podem precisar de configurações mais explícitas
+          tempInput.setAttribute('accept', 'image/jpeg,image/png,image/jpg');
+          tempInput.setAttribute('data-force-camera', 'true');
+          console.log('Aplicando configurações específicas para WebView');
+        }
+        
+        // Esconder o input mas mantê-lo no DOM
+        tempInput.style.position = 'absolute';
+        tempInput.style.visibility = 'hidden';
+        tempInput.style.top = '-9999px';
+        tempInput.style.left = '-9999px';
+        tempInput.style.height = '1px';
+        tempInput.style.width = '1px';
+        document.body.appendChild(tempInput);
+        
+        // Transferir o evento de change para nosso input original
+        tempInput.addEventListener('change', (e) => {
+          if (e.target.files && e.target.files[0]) {
+            try {
+              // Simular a seleção no input original
+              const dataTransfer = new DataTransfer();
+              dataTransfer.items.add(e.target.files[0]);
+              fileInput.files = dataTransfer.files;
+              
+              // Disparar o evento change manualmente
+              const event = new Event('change', { bubbles: true });
+              fileInput.dispatchEvent(event);
+              
+              console.log('Imagem da câmera capturada com sucesso');
+            } catch (error) {
+              console.error('Erro ao transferir arquivo da câmera:', error);
+              // Fallback: se não conseguir transferir, chamar diretamente o handler
+              if (e.target.files[0]) {
+                const file = e.target.files[0];
+                imageFile.value = file;
+                
+                // Criar preview da imagem
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  imagePreview.value = e.target.result;
+                };
+                reader.readAsDataURL(file);
+              }
+            }
           }
-        }, 500);
-      });
-      
-      // Clicar no input temporário para abrir a câmera
-      tempInput.click();
+          
+          // Remover o input temporário após um delay
+          setTimeout(() => {
+            if (document.body.contains(tempInput)) {
+              tempInput.remove();
+            }
+          }, 500);
+        });
+        
+        // Clicar no input temporário para abrir a câmera
+        console.log('Clicando no input temporário para abrir a câmera...');
+        tempInput.click();
+      } catch (error) {
+        console.error('Erro ao tentar abrir a câmera:', error);
+        // Fallback para o método padrão
+        fileInput.click();
+      }
     } else {
       // Em desktop, usamos o input normal
       fileInput.click();
@@ -662,10 +763,63 @@ const removeImage = () => {
   if (fileInput) fileInput.value = '';
 };
 
-// Salvar BDT preenchido
-const saveBdt = async () => {
+// Salvar rascunho no localStorage
+const saveDraft = () => {
+  try {
+    // Criar objeto com os dados do formulário
+    const draftData = {
+      id: currentBdtId.value,
+      veiculo_modelo: currentBdt.value.veiculo_modelo,
+      placa: currentBdt.value.placa,
+      data_saida: currentBdt.value.data_saida,
+      hora_saida: currentBdt.value.hora_saida,
+      odometro_inicial: currentBdt.value.odometro_inicial,
+      local_destino: currentBdt.value.local_destino,
+      horario_abastecimento: currentBdt.value.horario_abastecimento,
+      lt: currentBdt.value.lt,
+      local_abastecimento: currentBdt.value.local_abastecimento,
+      hora_chegada: currentBdt.value.hora_chegada,
+      odometro_final: currentBdt.value.odometro_final,
+      equipe: currentBdt.value.equipe,
+      nivel_oleo: currentBdt.value.nivel_oleo,
+      nivel_agua: currentBdt.value.nivel_agua,
+      nivel_fluido_freio: currentBdt.value.nivel_fluido_freio,
+      nivel_agua_limpador: currentBdt.value.nivel_agua_limpador,
+      pneus: currentBdt.value.pneus,
+      crvl_documentacao: currentBdt.value.crvl_documentacao,
+      eletrica: currentBdt.value.eletrica,
+      balanca_carregada: currentBdt.value.balanca_carregada,
+      balanca_manual: currentBdt.value.balanca_manual,
+      placas: currentBdt.value.placas,
+      cartao_despesas: currentBdt.value.cartao_despesas,
+      observacoes_gerais: currentBdt.value.observacoes_gerais,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    // Salvar no localStorage com chave única para cada BDT
+    localStorage.setItem(`bdt_draft_${currentBdtId.value}`, JSON.stringify(draftData));
+    
+    // Mostrar mensagem de sucesso
+    showSnackbar('Rascunho salvo localmente. Você pode continuar depois.');
+    
+    // Não fechar o formulário para permitir que o usuário continue editando
+  } catch (error) {
+    console.error('Erro ao salvar rascunho:', error);
+    showSnackbar('Erro ao salvar rascunho. Tente novamente.');
+  }
+};
+
+// Salvar BDT preenchido no banco de dados
+const saveBdt = async (saveToDatabase = false) => {
   try {
     loading.value = true;
+    
+    // Se não for para salvar no banco, apenas salvar como rascunho
+    if (!saveToDatabase) {
+      saveDraft();
+      loading.value = false;
+      return;
+    }
     
     // Primeiro, fazer upload da imagem se existir
     let publicUrl = null;
@@ -1441,6 +1595,41 @@ onMounted(async () => {
   cursor: pointer;
 }
 
+.button-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+  width: 100%;
+}
+
+.draft-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: white;
+  color: var(--primary-color);
+  border: 2px solid var(--primary-color);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.draft-button:hover {
+  background-color: #f0f8ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+}
+
+.draft-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
 .save-button {
   display: flex;
   align-items: center;
@@ -1450,12 +1639,23 @@ onMounted(async () => {
   color: white;
   border: none;
   border-radius: 8px;
-  padding: 14px;
-  width: 100%;
+  padding: 12px 16px;
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
+  flex: 1;
   cursor: pointer;
-  margin-top: 16px;
+  transition: all 0.2s ease;
+}
+
+.save-button:hover {
+  background-color: var(--primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.save-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Snackbar */

@@ -646,7 +646,15 @@ const getRotaData = (ordemId) => {
 const formatDateShort = (dateString) => {
   if (!dateString) return '';
   
-  const date = new Date(dateString);
+  // Corrigir problema de fuso horário adicionando 'T00:00:00' e tratando como data local
+  // Isso garante que a data seja interpretada no fuso horário local sem deslocamento
+  const parts = dateString.split('T')[0].split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // Meses em JS são 0-11
+  const day = parseInt(parts[2]);
+  
+  const date = new Date(year, month, day);
+  
   return date.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: '2-digit'
@@ -664,13 +672,21 @@ const isOverdue = (ordem) => {
   const rota = getRotaInfo(ordem.id);
   if (!rota || !rota.dia_arealizar) return false;
   
-  const dataRealizar = new Date(rota.dia_arealizar);
+  // Corrigir problema de fuso horário extraindo os componentes da data
+  const parts = rota.dia_arealizar.split('T')[0].split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // Meses em JS são 0-11
+  const day = parseInt(parts[2]);
+  
+  const dataRealizar = new Date(year, month, day);
   const hoje = new Date();
   
   // Resetar horas para comparar apenas as datas
   dataRealizar.setHours(0, 0, 0, 0);
   hoje.setHours(0, 0, 0, 0);
   
+  // Uma ordem está atrasada apenas se a data programada for ANTERIOR à data atual
+  // Se a data for igual à atual, a ordem ainda está no prazo
   return dataRealizar.getTime() < hoje.getTime();
 };
 
@@ -726,7 +742,13 @@ const getStatusClass = (ordem) => {
     return 'status-pendente';
   }
   
-  const dataRealizar = new Date(rota.dia_arealizar);
+  // Corrigir problema de fuso horário extraindo os componentes da data
+  const parts = rota.dia_arealizar.split('T')[0].split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // Meses em JS são 0-11
+  const day = parseInt(parts[2]);
+  
+  const dataRealizar = new Date(year, month, day);
   const hoje = new Date();
   const amanha = new Date();
   amanha.setDate(hoje.getDate() + 1);
@@ -760,7 +782,13 @@ const getStatusText = (ordem) => {
     return 'Pendente';
   }
   
-  const dataRealizar = new Date(rota.dia_arealizar);
+  // Corrigir problema de fuso horário extraindo os componentes da data
+  const parts = rota.dia_arealizar.split('T')[0].split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1; // Meses em JS são 0-11
+  const day = parseInt(parts[2]);
+  
+  const dataRealizar = new Date(year, month, day);
   const hoje = new Date();
   const amanha = new Date();
   amanha.setDate(hoje.getDate() + 1);
@@ -769,6 +797,8 @@ const getStatusText = (ordem) => {
   dataRealizar.setHours(0, 0, 0, 0);
   hoje.setHours(0, 0, 0, 0);
   amanha.setHours(0, 0, 0, 0);
+  
+  // Comparação das datas sem problemas de fuso horário
   
   if (dataRealizar.getTime() < hoje.getTime()) {
     return 'Em atraso';
