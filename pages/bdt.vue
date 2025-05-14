@@ -315,25 +315,13 @@
           <div class="form-section">
             <h3>Foto da Bomba de Combustível</h3>
             <div class="image-upload">
-              <!-- Botão principal para abrir a câmera -->
+              <!-- Botão para abrir a câmera -->
               <button type="button" class="upload-button camera-button" @click="openCamera">
                 <i class="material-icons">local_gas_station</i>
-                <span>Foto da bomba de combustível</span>
+                <span>Tirar foto da bomba de combustível</span>
               </button>
               
-              <!-- Botão alternativo para abrir a galeria (visível apenas quando necessário) -->
-              <button 
-                v-if="showGalleryOption" 
-                type="button" 
-                class="upload-button gallery-button" 
-                @click="openGallery"
-                style="margin-top: 10px; background-color: #f5f5f5; color: #555;"
-              >
-                <i class="material-icons">photo_library</i>
-                <span>Selecionar da galeria</span>
-              </button>
-              
-              <!-- Input para câmera com atributo capture -->
+              <!-- Input para câmera com atributos máximos para forçar a câmera -->
               <input 
                 id="camera-input" 
                 type="file" 
@@ -343,17 +331,8 @@
                 style="display: none;"
               />
               
-              <!-- Input separado para galeria sem atributo capture -->
-              <input 
-                id="gallery-input" 
-                type="file" 
-                accept="image/*" 
-                @change="handleImageUpload" 
-                style="display: none;"
-              />
-              
               <div class="camera-hint" style="margin-top: 8px; color: #888; font-size: 13px;">
-                Caso a câmera não abra automaticamente, tente a opção de galeria e depois selecione <b>Câmera</b>.
+                <b>Importante:</b> É necessário usar a câmera para tirar a foto da bomba de combustível.
               </div>
               
               <div v-if="imagePreview" class="image-preview">
@@ -430,7 +409,6 @@ const currentBdtId = ref(null);
 const currentBdt = ref({});
 const imageFile = ref(null);
 const imagePreview = ref(null);
-const showGalleryOption = ref(false);
 const cameraAttempts = ref(0);
 
 // Variáveis para o snackbar
@@ -672,7 +650,7 @@ const handleImageUpload = (event) => {
   reader.readAsDataURL(file);
 };
 
-// Abrir a câmera diretamente usando uma abordagem simplificada
+// Abrir a câmera diretamente usando uma abordagem agressiva para WebView Flutter
 const openCamera = () => {
   // Detectar ambiente
   const isFlutterWebView = /wv|Flutter/.test(navigator.userAgent);
@@ -685,45 +663,65 @@ const openCamera = () => {
   // Incrementar contador de tentativas
   cameraAttempts.value++;
   
-  // Mostrar opção de galeria após a primeira tentativa ou se estiver em WebView
-  if (cameraAttempts.value > 1 || isFlutterWebView) {
-    showGalleryOption.value = true;
-  }
-  
   // Usar o input específico para câmera
   const cameraInput = document.getElementById('camera-input');
   
   if (cameraInput) {
     try {
-      // Tentar abrir diretamente a câmera
-      cameraInput.click();
-      
-      // Definir um timeout para mostrar a opção de galeria se o usuário não selecionar nada
-      setTimeout(() => {
-        // Se ainda não tiver uma imagem selecionada, mostrar opção de galeria
-        if (!imageFile.value) {
-          showGalleryOption.value = true;
+      if (isFlutterWebView) {
+        // Abordagem agressiva para WebView do Flutter
+        // Remover e recriar o input para evitar cache de comportamento
+        const oldInput = document.getElementById('camera-input');
+        if (oldInput) {
+          const parentElement = oldInput.parentElement;
+          oldInput.remove();
+          
+          // Criar um novo input com configurações máximas para câmera
+          const newInput = document.createElement('input');
+          newInput.id = 'camera-input';
+          newInput.type = 'file';
+          newInput.accept = 'image/*';
+          newInput.setAttribute('capture', 'environment');
+          newInput.setAttribute('camera', 'environment');
+          newInput.style.display = 'none';
+          
+          // Adicionar o mesmo handler de eventos
+          newInput.addEventListener('change', (e) => handleImageUpload(e));
+          
+          // Adicionar o novo input ao DOM
+          parentElement.appendChild(newInput);
+          
+          // Aguardar um momento para garantir que o DOM foi atualizado
+          setTimeout(() => {
+            newInput.click();
+          }, 100);
+        } else {
+          console.error('Não foi possível encontrar o input da câmera para substituir');
+          // Fallback para o método normal
+          cameraInput.click();
         }
-      }, 5000); // 5 segundos
+      } else {
+        // Em outros ambientes, usar o método normal
+        cameraInput.click();
+      }
+      
+      // Se após várias tentativas ainda não conseguir abrir a câmera
+      if (cameraAttempts.value > 3) {
+        // Mostrar alerta informando a necessidade de usar a câmera
+        setTimeout(() => {
+          if (!imageFile.value) {
+            alert('Atenção: É necessário usar a câmera para tirar a foto da bomba de combustível. Por favor, permita o acesso à câmera quando solicitado.');
+          }
+        }, 3000);
+      }
     } catch (error) {
       console.error('Erro ao tentar abrir a câmera:', error);
-      showGalleryOption.value = true;
+      alert('Erro ao abrir a câmera. É necessário permitir o acesso à câmera para continuar.');
     }
   } else {
     console.error('Elemento de input para câmera não encontrado');
-    showGalleryOption.value = true;
+    alert('Erro ao encontrar o componente da câmera. Por favor, tente novamente ou contate o suporte.');
   }
-};
-
-// Abrir a galeria como alternativa
-const openGallery = () => {
-  const galleryInput = document.getElementById('gallery-input');
-  
-  if (galleryInput) {
-    galleryInput.click();
-  } else {
-    console.error('Elemento de input para galeria não encontrado');
-  }  
 };
 
 // Remover imagem
