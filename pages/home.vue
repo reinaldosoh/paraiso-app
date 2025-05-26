@@ -111,6 +111,10 @@
             <i class="material-icons">directions_car</i>
             <span>Listar BDT</span>
           </button>
+          <button class="action-button ripple" @click="navigateToControlePragas()">
+            <i class="material-icons">pest_control</i>
+            <span>Controle de Pragas</span>
+          </button>
         </div>
       </div>
       
@@ -318,6 +322,18 @@ const verOrdensEmAtraso = () => {
     path: '/ordens', 
     query: { filter: 'Em atraso' } 
   });
+};
+
+// Função para navegar para a página de controle de pragas
+const navigateToControlePragas = () => {
+  console.log('Navegando para controle de pragas');
+  try {
+    router.push('/controle-pragas');
+  } catch (error) {
+    console.error('Erro ao navegar:', error);
+    // Tentar abordagem alternativa
+    window.location.href = '/controle-pragas';
+  }
 };
 
 // Verificar se o usuário está autenticado e carregar dados
