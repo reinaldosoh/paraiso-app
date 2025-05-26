@@ -356,7 +356,7 @@
           
           <div class="total-peso">
             <span>Peso Total:</span>
-            <strong>{{ totalPeso.toFixed(2) }} kg</strong>
+            <strong>{{ formatarPeso(totalPeso) }} kg</strong>
           </div>
           
           <div class="form-group">
@@ -415,7 +415,7 @@
         </div>
         <div class="dialog-content">
           <p>Tem certeza que deseja registrar esta coleta?</p>
-          <p>Serão registrados {{ mtrItems.length }} itens com peso total de {{ totalPeso.toFixed(2) }} kg.</p>
+          <p>Serão registrados {{ mtrItems.length }} itens com peso total de {{ formatarPeso(totalPeso) }} kg.</p>
         </div>
         <div class="dialog-actions">
           <button class="cancel-button" @click="confirmDialogVisible = false">
@@ -974,19 +974,65 @@ const removeMtrItem = (index) => {
 // Validar entrada de peso (apenas números e ponto decimal)
 const validarPeso = (event, index) => {
   const value = event.target.value;
+  
   // Permitir apenas números e um ponto decimal
   if (!/^\d*\.?\d*$/.test(value)) {
     mtrItems.value[index].peso = mtrItems.value[index].peso.replace(/[^\d.]/g, '');
   }
+  
+  // Garantir que não tenha mais de um ponto decimal
+  const pontos = mtrItems.value[index].peso.match(/\./g) || [];
+  if (pontos.length > 1) {
+    // Manter apenas o primeiro ponto decimal
+    const partes = mtrItems.value[index].peso.split('.');
+    mtrItems.value[index].peso = partes[0] + '.' + partes.slice(1).join('');
+  }
+  
+  // Limitar a 2 casas decimais, mas preservar o formato original
+  // (não adicionar zeros desnecessários à direita)
+  if (mtrItems.value[index].peso.includes('.')) {
+    const [inteiro, decimal] = mtrItems.value[index].peso.split('.');
+    if (decimal.length > 2) {
+      mtrItems.value[index].peso = inteiro + '.' + decimal.substring(0, 2);
+    }
+  }
+  
   calcularTotalPeso();
 };
 
 // Calcular o total do peso
 const calcularTotalPeso = () => {
-  totalPeso.value = mtrItems.value.reduce((sum, item) => {
+  // Calcular a soma dos pesos
+  const soma = mtrItems.value.reduce((sum, item) => {
     const peso = parseFloat(item.peso) || 0;
     return sum + peso;
   }, 0);
+  
+  // Armazenar o valor como número para cálculos internos
+  totalPeso.value = soma;
+};
+
+// Formatar o peso para exibição sem zeros desnecessários à direita
+const formatarPeso = (valor) => {
+  if (valor === undefined || valor === null) return '0';
+  
+  // Converter para número para garantir
+  const num = parseFloat(valor);
+  if (isNaN(num)) return '0';
+  
+  // Formatar com até 2 casas decimais
+  const comDuasCasas = num.toFixed(2);
+  
+  // Remover zeros desnecessários à direita
+  if (comDuasCasas.includes('.')) {
+    // Remover zeros à direita
+    const semZeros = comDuasCasas.replace(/\.?0+$/, '');
+    
+    // Se terminar apenas com ponto, remover o ponto também
+    return semZeros.endsWith('.') ? semZeros.slice(0, -1) : semZeros;
+  }
+  
+  return comDuasCasas;
 };
 
 // Fechar o bottom sheet
@@ -1035,7 +1081,21 @@ const salvarColeta = async () => {
     
     const mtrArray = mtrItems.value.map(item => item.mtr);
     const gruposArray = mtrItems.value.map(item => item.grupo);
-    const pesoArray = mtrItems.value.map(item => parseFloat(item.peso));
+    // Preservar o formato original do peso, mas garantir que seja um número válido
+    const pesoArray = mtrItems.value.map(item => {
+      // Validar se é um número válido primeiro
+      const pesoNumerico = parseFloat(item.peso);
+      if (isNaN(pesoNumerico)) return 0;
+      
+      // Preservar o formato original (evitar conversão para 3.500 quando é 3.5)
+      // Usar o valor original se não tiver zeros desnecessários à direita
+      // Ou formatar para manter apenas 2 casas decimais se necessário
+      return item.peso.includes('.') ? 
+        // Se já contém ponto decimal, preservar formato original
+        item.peso : 
+        // Se não contém ponto decimal, garantir que seja um número
+        pesoNumerico.toString();
+    });
     
     const { error } = await $supabase
       .from('ordem_servico')
@@ -1082,10 +1142,14 @@ const salvarColeta = async () => {
     try {
       // Preparar os dados no formato especificado
       const ordem = ordens.value.find(o => o.id === currentOrdemId.value);
+      // Nome da empresa cliente
       const clienteNome = getClienteNome(ordem.cliente_id);
+      // Nome do gerador
+      const geradorNome = ordem.gerador || '';
       
       // Formatar os dados de MTR, grupo e peso
       const mtrGrupoPeso = mtrItems.value.map(item => {
+        // Usar o formato original do peso para exibição
         return `MTR: ${item.mtr} - ${item.grupo} - PESO: ${item.peso}`;
       }).join(' | ');
       
@@ -1095,6 +1159,7 @@ const salvarColeta = async () => {
       // Montar o body da requisição
       const webhookData = {
         nome_cliente: clienteNome,
+        nomecliente: geradorNome, // Agora usando o nome do gerador
         mtr_grupo_peso: mtrGrupoPeso,
         data_realizacao: dataRealizacao
       };
