@@ -905,32 +905,29 @@
                 <p>O TEMPO DE REENTRADA NO AMBIENTE DEDETIZADO SERÁ DE NO MÍNIMO 8 HORAS.</p>
               </div>
               
-              <!-- Assinaturas -->
-              <div class="signature-section">
-                <div class="signature-field">
-                  <label>Assinatura do Cliente:</label>
-                  <div class="signature-line"></div>
-                </div>
-                
-                <div class="signature-field">
-                  <label>Assinatura do Dedetizador:</label>
-                  <div class="signature-line"></div>
-                </div>
+              <!-- Botão de salvar -->
+              <div class="form-actions">
+                <button class="save-button" @click="salvarFormulario">
+                  <i class="material-icons">check</i>
+                  <span>{{ currentServico.id ? 'Finalizar e Salvar' : 'Criar Novo Registro' }}</span>
+                </button>
               </div>
-            </div>
-            
-            <!-- Botão de salvar -->
-            <div class="form-actions">
-              <button class="save-button" @click="salvarFormulario">
-                <i class="material-icons">check</i>
-                <span>{{ currentServico.id ? 'Finalizar e Salvar' : 'Criar Novo Registro' }}</span>
-              </button>
             </div>
           </div>
         </div>
       </div>
     </div>
   </div>
+
+  <!-- Snackbar -->
+  <transition name="snackbar-fade">
+    <div class="snackbar" v-if="snackbarVisible">
+      <div class="snackbar-content">
+        <i class="material-icons snackbar-icon">check_circle</i>
+        <span>{{ snackbarMessage }}</span>
+      </div>
+    </div>
+  </transition>
 </template>
 
 <script setup>
@@ -949,6 +946,11 @@ const isBottomSheetActive = ref(false);
 const currentServico = ref({});
 const clientes = ref([]);
 const clientesMap = ref({});
+
+// Variáveis para o snackbar
+const snackbarVisible = ref(false);
+const snackbarMessage = ref('');
+const snackbarTimeout = ref(null);
 
 // Filtrar registros com base no status selecionado
 const filteredRegistros = computed(() => {
@@ -1026,12 +1028,12 @@ function openBottomSheet(record) {
   }
   
   // Inicializar campos que podem ser undefined
-  if (!currentServico.value.criancas) currentServico.value.criancas = false;
-  if (!currentServico.value.animais) currentServico.value.animais = false;
-  if (!currentServico.value.dedetizacao) currentServico.value.dedetizacao = false;
-  if (!currentServico.value.desratizacao) currentServico.value.desratizacao = false;
-  if (!currentServico.value.descupinizacao) currentServico.value.descupinizacao = false;
-  if (!currentServico.value.desalojamento) currentServico.value.desalojamento = false;
+  // Garantir que os campos booleanos estejam inicializados
+  // Usamos os campos que existem na tabela pest_control_services
+  if (currentServico.value.possuianimais === undefined) currentServico.value.possuianimais = false;
+  if (currentServico.value.possuicrianca === undefined) currentServico.value.possuicrianca = false;
+  if (currentServico.value.alergiaSindromesRespiratorias === undefined) currentServico.value.alergiaSindromesRespiratorias = false;
+  if (currentServico.value.finalizado === undefined) currentServico.value.finalizado = false;
   
   isBottomSheetActive.value = true;
 }
@@ -1040,14 +1042,32 @@ function closeBottomSheet() {
   isBottomSheetActive.value = false;
 }
 
+// Mostrar snackbar
+const showSnackbar = (message) => {
+  // Limpar timeout anterior se existir
+  if (snackbarTimeout.value) {
+    clearTimeout(snackbarTimeout.value);
+  }
+  
+  // Definir mensagem e mostrar snackbar
+  snackbarMessage.value = message;
+  snackbarVisible.value = true;
+  
+  // Configurar timeout para esconder o snackbar após 3 segundos
+  snackbarTimeout.value = setTimeout(() => {
+    snackbarVisible.value = false;
+  }, 3000);
+}
+
 async function salvarFormulario() {
   try {
+    // Definir campos de finalização para todos os registros
+    currentServico.value.finalizado = true;
+    currentServico.value.data_realizado = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
+    
     // Verificar se é um novo registro ou atualização
     if (currentServico.value.id) {
       // Atualizar registro existente
-      currentServico.value.finalizado = true;
-      currentServico.value.data_realizado = new Date().toISOString();
-
       const { error } = await $supabase
         .from('pest_control_services')
         .update(currentServico.value)
@@ -1055,8 +1075,8 @@ async function salvarFormulario() {
 
       if (error) throw error;
       
-      // Mostrar mensagem de sucesso
-      alert('Serviço finalizado com sucesso!');
+      // Mostrar snackbar de sucesso
+      showSnackbar('Serviço de controle de pragas finalizado e salvo com sucesso!');
     } else {
       // Criar novo registro
       const { error } = await $supabase
@@ -1065,8 +1085,8 @@ async function salvarFormulario() {
 
       if (error) throw error;
       
-      // Mostrar mensagem de sucesso
-      alert('Novo serviço de controle de pragas criado com sucesso!');
+      // Mostrar snackbar de sucesso
+      showSnackbar('Novo serviço de controle de pragas finalizado e salvo com sucesso!');
     }
 
     // Atualizar a lista de registros
@@ -1074,7 +1094,7 @@ async function salvarFormulario() {
     closeBottomSheet();
   } catch (error) {
     console.error('Erro ao salvar formulário:', error);
-    alert('Erro ao salvar o formulário. Por favor, tente novamente.');
+    showSnackbar('Erro ao salvar o formulário. Por favor, tente novamente.');
   }
 }
 
@@ -1573,27 +1593,65 @@ const viewDetails = (id) => {
   margin-right: 4px;
 }
 
-/* Diálogo de confirmação */
+/* Bottom Sheet */
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease;
+}
+
+.overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
 .bottom-sheet {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   background-color: white;
-  border-radius: 20px 20px 0 0;
-  padding: 20px;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0px -4px 10px rgba(0, 0, 0, 0.1);
   z-index: 1000;
-  max-height: 90vh;
+  max-height: 85vh;
   overflow-y: auto;
   transform: translateY(100%);
-  transition: transform 0.3s ease;
+  transition: transform 0.3s ease-in-out;
   display: none;
+  padding-bottom: 60px;
 }
 
 .bottom-sheet.active {
   transform: translateY(0);
   display: block;
+}
+
+.bottom-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.bottom-sheet-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.bottom-sheet-content {
+  padding: 20px;
 }
 
 .dialog-overlay {
@@ -1664,5 +1722,363 @@ const viewDetails = (id) => {
 .cancel-button i, .confirm-button i {
   font-size: 16px;
   margin-right: 4px;
+}
+
+/* Estilos atualizados para o formulário de controle de pragas */
+.form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+  background-color: #fff;
+  border-radius: 8px;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row.two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.form-group label {
+  font-size: 14px;
+  color: #555;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  background-color: #fff;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: var(--primary-color);
+  outline: none;
+}
+
+.form-group input:disabled,
+.form-group select:disabled,
+.form-group textarea:disabled {
+  background-color: #f8f8f8;
+  color: #666;
+  border-color: #e0e0e0;
+}
+
+/* Botões do formulário */
+.form-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  margin-bottom: 70px; /* Espaço reduzido mas ainda suficiente para ficar acima da tabbar */
+}
+
+.save-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 14px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  min-width: 200px;
+  margin-top: 16px;
+}
+
+.save-button:active {
+  background-color: var(--primary-color-dark);
+  transform: scale(0.98);
+}
+
+/* Estilos modernos para as tabelas de aplicação */
+.application-table {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid #eaeaea;
+  margin-bottom: 24px;
+  background-color: #fff;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #eaeaea;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.table-header .table-cell {
+  padding: 12px 16px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s ease;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.table-row:hover {
+  background-color: #f9f9f9;
+}
+
+.table-cell {
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+}
+
+.application-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  accent-color: var(--primary-color);
+}
+
+.checkbox-item label {
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.table-cell input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.table-cell input[type="text"]:focus {
+  border-color: var(--primary-color);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+}
+
+/* Estilos para a imagem de ilustração */
+.image-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 16px 0;
+  padding: 8px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.illustration-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  object-fit: contain;
+  max-height: 300px;
+}
+
+/* Estilos para a caixa de aviso */
+.warning-box {
+  background-color: #fff9e6;
+  border: 1px solid #ffe0b2;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 10px 0;
+}
+
+.warning-box h4 {
+  color: #e65100;
+  font-size: 16px;
+  margin: 0 0 8px 0;
+}
+
+.warning-box p {
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 8px 0;
+  color: #333;
+}
+
+/* Estilos responsivos para telas menores */
+@media (max-width: 768px) {
+  .table-header,
+  .table-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  
+  .table-cell {
+    padding: 10px 12px;
+  }
+  
+  .application-options {
+    gap: 10px;
+  }
+  
+  .illustration-image {
+    max-height: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .table-header,
+  .table-row {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .table-header {
+    display: none;
+  }
+  
+  .table-cell {
+    padding: 8px 12px;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .table-cell:last-child {
+    border-bottom: none;
+  }
+  
+  .table-row {
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border: 1px solid #eaeaea;
+    border-radius: 8px;
+  }
+  
+  .table-row:last-child {
+    margin-bottom: 0;
+  }
+  
+  .checkbox-item {
+    margin-bottom: 0;
+  }
+  
+  .illustration-image {
+    max-height: 200px;
+  }
+  
+  .image-container {
+    padding: 4px;
+    margin: 12px 0;
+  }
+  
+  .warning-box {
+    padding: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .warning-box h4 {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  
+  .warning-box p {
+    font-size: 12px;
+    line-height: 1.3;
+    margin: 4px 0;
+  }
+}
+
+/* Snackbar */
+.snackbar {
+  position: fixed;
+  bottom: 70px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.snackbar-content {
+  display: flex;
+  align-items: center;
+  background-color: #43a047;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+}
+
+.snackbar-icon {
+  margin-right: 10px;
+}
+
+/* Animações do Snackbar */
+.snackbar-fade-enter-active,
+.snackbar-fade-leave-active {
+  transition: opacity 0.3s, transform 0.3s;
+}
+
+.snackbar-fade-enter-from,
+.snackbar-fade-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
 }
 </style>
