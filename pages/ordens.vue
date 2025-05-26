@@ -971,30 +971,38 @@ const removeMtrItem = (index) => {
   }
 };
 
-// Validar entrada de peso (apenas números e ponto decimal)
+// Validar entrada de peso (aceita números, ponto e vírgula)
 const validarPeso = (event, index) => {
   const value = event.target.value;
   
-  // Permitir apenas números e um ponto decimal
-  if (!/^\d*\.?\d*$/.test(value)) {
-    mtrItems.value[index].peso = mtrItems.value[index].peso.replace(/[^\d.]/g, '');
+  // Converter vírgulas para pontos para processamento interno
+  let processedValue = value.replace(/,/g, '.');
+  
+  // Permitir apenas números e um separador decimal (ponto)
+  if (!/^\d*\.?\d*$/.test(processedValue)) {
+    processedValue = processedValue.replace(/[^\d.]/g, '');
   }
   
   // Garantir que não tenha mais de um ponto decimal
-  const pontos = mtrItems.value[index].peso.match(/\./g) || [];
+  const pontos = processedValue.match(/\./g) || [];
   if (pontos.length > 1) {
-    // Manter apenas o primeiro ponto decimal
-    const partes = mtrItems.value[index].peso.split('.');
-    mtrItems.value[index].peso = partes[0] + '.' + partes.slice(1).join('');
+    const partes = processedValue.split('.');
+    processedValue = partes[0] + '.' + partes.slice(1).join('');
   }
   
   // Limitar a 2 casas decimais, mas preservar o formato original
-  // (não adicionar zeros desnecessários à direita)
-  if (mtrItems.value[index].peso.includes('.')) {
-    const [inteiro, decimal] = mtrItems.value[index].peso.split('.');
+  if (processedValue.includes('.')) {
+    const [inteiro, decimal] = processedValue.split('.');
     if (decimal.length > 2) {
-      mtrItems.value[index].peso = inteiro + '.' + decimal.substring(0, 2);
+      processedValue = inteiro + '.' + decimal.substring(0, 2);
     }
+  }
+  
+  // Manter a vírgula na exibição se o usuário digitou vírgula
+  if (value.includes(',') && processedValue.includes('.')) {
+    mtrItems.value[index].peso = processedValue.replace(/\./g, ',');
+  } else {
+    mtrItems.value[index].peso = processedValue;
   }
   
   calcularTotalPeso();
@@ -1004,7 +1012,9 @@ const validarPeso = (event, index) => {
 const calcularTotalPeso = () => {
   // Calcular a soma dos pesos
   const soma = mtrItems.value.reduce((sum, item) => {
-    const peso = parseFloat(item.peso) || 0;
+    // Converter vírgula para ponto antes de converter para número
+    const pesoStr = typeof item.peso === 'string' ? item.peso.replace(/,/g, '.') : item.peso;
+    const peso = parseFloat(pesoStr) || 0;
     return sum + peso;
   }, 0);
   
@@ -1081,20 +1091,13 @@ const salvarColeta = async () => {
     
     const mtrArray = mtrItems.value.map(item => item.mtr);
     const gruposArray = mtrItems.value.map(item => item.grupo);
-    // Preservar o formato original do peso, mas garantir que seja um número válido
+    // Converter vírgulas para pontos e garantir que seja um número válido para o banco
     const pesoArray = mtrItems.value.map(item => {
-      // Validar se é um número válido primeiro
-      const pesoNumerico = parseFloat(item.peso);
-      if (isNaN(pesoNumerico)) return 0;
-      
-      // Preservar o formato original (evitar conversão para 3.500 quando é 3.5)
-      // Usar o valor original se não tiver zeros desnecessários à direita
-      // Ou formatar para manter apenas 2 casas decimais se necessário
-      return item.peso.includes('.') ? 
-        // Se já contém ponto decimal, preservar formato original
-        item.peso : 
-        // Se não contém ponto decimal, garantir que seja um número
-        pesoNumerico.toString();
+      // Converter vírgula para ponto antes de converter para número
+      const pesoStr = typeof item.peso === 'string' ? item.peso.replace(/,/g, '.') : item.peso;
+      // Validar se é um número válido
+      const pesoNumerico = parseFloat(pesoStr);
+      return isNaN(pesoNumerico) ? 0 : pesoNumerico;
     });
     
     const { error } = await $supabase

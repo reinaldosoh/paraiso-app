@@ -327,13 +327,18 @@ const verOrdensEmAtraso = () => {
 // Função para navegar para a página de controle de pragas
 const navigateToControlePragas = () => {
   console.log('Navegando para controle de pragas');
-  try {
-    router.push('/controle-pragas');
-  } catch (error) {
-    console.error('Erro ao navegar:', error);
-    // Tentar abordagem alternativa
-    window.location.href = '/controle-pragas';
-  }
+  // Usar o método push do Vue Router com tratamento de promessa
+  router.push('/controle-pragas')
+    .then(() => {
+      console.log('Navegação bem-sucedida para controle de pragas');
+    })
+    .catch(error => {
+      console.error('Erro ao navegar:', error);
+      // Se houver erro, tentar recarregar a página
+      setTimeout(() => {
+        window.location.href = '/controle-pragas';
+      }, 100);
+    });
 };
 
 // Verificar se o usuário está autenticado e carregar dados
