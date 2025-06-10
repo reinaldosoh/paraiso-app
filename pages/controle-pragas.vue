@@ -1109,7 +1109,10 @@ const toggleCard = (id) => {
 function formatDate(dateString) {
   if (!dateString) return 'Data não informada';
   
-  const date = new Date(dateString);
+  // Criar a data usando o formato ISO e ajustar para o fuso horário local
+  // Adicionando 'T12:00:00' para garantir que a data seja interpretada ao meio-dia
+  // do fuso horário local, evitando problemas com UTC
+  const date = new Date(`${dateString}T12:00:00`);
   return date.toLocaleDateString('pt-BR');
 }
 

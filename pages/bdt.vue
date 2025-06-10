@@ -444,7 +444,10 @@ const filteredBdts = computed(() => {
 const formatDate = (dateString) => {
   if (!dateString) return 'Data não informada';
   
-  const date = new Date(dateString);
+  // Criar a data usando o formato ISO e ajustar para o fuso horário local
+  // Adicionando 'T12:00:00' para garantir que a data seja interpretada ao meio-dia
+  // do fuso horário local, evitando problemas com UTC
+  const date = new Date(`${dateString}T12:00:00`);
   if (isNaN(date.getTime())) {
     // Tentar formato DD/MM/YYYY
     const parts = dateString.split('/');
