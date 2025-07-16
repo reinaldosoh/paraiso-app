@@ -418,13 +418,14 @@
           <p>Serão registrados {{ mtrItems.length }} itens com peso total de {{ formatarPeso(totalPeso) }} kg.</p>
         </div>
         <div class="dialog-actions">
-          <button class="cancel-button" @click="confirmDialogVisible = false">
+          <button class="cancel-button" @click="confirmDialogVisible = false" :disabled="savingColeta">
             <i class="material-icons">close</i>
             <span>Cancelar</span>
           </button>
-          <button class="confirm-button" @click="salvarColeta">
-            <i class="material-icons">check</i>
-            <span>Confirmar</span>
+          <button class="confirm-button" @click="salvarColeta" :disabled="savingColeta" :class="{ 'loading': savingColeta }">
+            <i class="material-icons" v-if="!savingColeta">check</i>
+            <div class="loading-spinner" v-if="savingColeta"></div>
+            <span>{{ savingColeta ? 'Salvando...' : 'Confirmar' }}</span>
           </button>
         </div>
       </div>
@@ -463,7 +464,9 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+
 definePageMeta({
   middleware: 'auth'
 });
@@ -538,7 +541,8 @@ const fetchOrdens = async () => {
       ordens.value = ordensData;
       
       // Extrair todos os IDs de clientes únicos
-      const clienteIds = [...new Set(ordensData.map(ordem => ordem.cliente_id))];
+      const clienteIdsSet = new Set(ordensData.map(ordem => ordem.cliente_id));
+      const clienteIds = Array.from(clienteIdsSet);
       
       // Buscar informações dos clientes
       if (clienteIds.length > 0) {
@@ -625,10 +629,9 @@ const fetchClientesRoda = async () => {
 
 // Alternar a exibição do card
 const toggleCard = (ordemId) => {
-  expandedCards.value = {
-    ...expandedCards.value,
+  expandedCards.value = Object.assign({}, expandedCards.value, {
     [ordemId]: !expandedCards.value[ordemId]
-  };
+  });
 };
 
 // Obter informações da rota para uma ordem específica
@@ -702,32 +705,53 @@ const openWhatsApp = (whatsappNumber) => {
 
 // Filtrar ordens por status
 const filteredOrdens = computed(() => {
-  if (statusFilter.value === 'todos') {
-    return ordens.value;
-  }
+  let filteredList = [];
   
-  // Filtro de impossibilidade
-  if (statusFilter.value === 'impossibilidade') {
+  if (statusFilter.value === 'todos') {
+    filteredList = ordens.value.slice();
+  } else if (statusFilter.value === 'impossibilidade') {
+    // Filtro de impossibilidade
     const impossibilidadeStatus = [
       'Ausência do responsável de liberação',
       'Local Fechado',
       'Não há resíduos para coletar',
       'Sem MTR'
     ];
-    return ordens.value.filter(ordem => impossibilidadeStatus.includes(ordem.status));
-  }
-  
-  // Outros filtros
-  if (statusFilter.value === 'Realizado') {
+    filteredList = ordens.value.filter(ordem => impossibilidadeStatus.includes(ordem.status));
+  } else if (statusFilter.value === 'Realizado') {
     // Filtrar apenas ordens com status 'Finalizado'
-    return ordens.value.filter(ordem => ordem.status === 'Finalizado');
+    filteredList = ordens.value.filter(ordem => ordem.status === 'Finalizado');
   } else if (statusFilter.value === 'Em aberto') {
-    return ordens.value.filter(ordem => ordem.status === 'Em aberto' && !isOverdue(ordem));
+    filteredList = ordens.value.filter(ordem => ordem.status === 'Em aberto' && !isOverdue(ordem));
   } else if (statusFilter.value === 'Em atraso') {
-    return ordens.value.filter(ordem => ordem.status === 'Em aberto' && isOverdue(ordem));
+    filteredList = ordens.value.filter(ordem => ordem.status === 'Em aberto' && isOverdue(ordem));
+  } else {
+    filteredList = ordens.value.slice();
   }
   
-  return ordens.value;
+  // Ordenar do dia mais recente ao mais antigo
+  return filteredList.sort((a, b) => {
+    // Obter datas das rotas para comparação
+    const rotaA = getRotaInfo(a.id);
+    const rotaB = getRotaInfo(b.id);
+    
+    // Se uma das ordens não tem rota, colocar no final
+    if (!rotaA?.dia_arealizar && !rotaB?.dia_arealizar) {
+      return b.id - a.id; // Ordenar por ID decrescente como fallback
+    }
+    if (!rotaA?.dia_arealizar) return 1;
+    if (!rotaB?.dia_arealizar) return -1;
+    
+    // Extrair e comparar datas
+    const partsA = rotaA.dia_arealizar.split('T')[0].split('-');
+    const partsB = rotaB.dia_arealizar.split('T')[0].split('-');
+    
+    const dateA = new Date(parseInt(partsA[0]), parseInt(partsA[1]) - 1, parseInt(partsA[2]));
+    const dateB = new Date(parseInt(partsB[0]), parseInt(partsB[1]) - 1, parseInt(partsB[2]));
+    
+    // Ordenar do mais recente ao mais antigo (decrescente)
+    return dateB.getTime() - dateA.getTime();
+  });
 });
 
 // Obter classe CSS com base no status da ordem
@@ -929,6 +953,7 @@ const mtrItems = ref([]);
 const totalPeso = ref(0);
 const observacoes = ref('');
 const confirmDialogVisible = ref(false);
+const savingColeta = ref(false);
 
 // Variáveis para o snackbar
 const snackbarVisible = ref(false);
@@ -1087,6 +1112,7 @@ const showSnackbar = (message) => {
 // Salvar os dados da coleta
 const salvarColeta = async () => {
   try {
+    savingColeta.value = true;
     loading.value = true;
     
     const mtrArray = mtrItems.value.map(item => item.mtr);
@@ -1199,6 +1225,7 @@ const salvarColeta = async () => {
     // Mostrar snackbar de erro
     showSnackbar('Erro ao salvar coleta. Tente novamente.');
   } finally {
+    savingColeta.value = false;
     loading.value = false;
   }
 };
@@ -2006,7 +2033,7 @@ const markAsImpossibility = async () => {
 
 .floating-button {
   position: fixed;
-  bottom: 20px;
+  bottom: 76px;
   right: 20px;
   width: 56px;
   height: 56px;
@@ -2343,6 +2370,31 @@ const markAsImpossibility = async () => {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+/* Estados de loading do botão */
+.dialog-actions button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirm-button.loading {
+  pointer-events: none;
+}
+
+/* Loading Spinner */
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid transparent;
+  border-top: 2px solid currentColor;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Melhorias de responsividade para telas pequenas */
 @media (max-width: 480px) {
   .page-header {
@@ -2403,7 +2455,7 @@ const markAsImpossibility = async () => {
   .floating-button {
     width: 48px;
     height: 48px;
-    bottom: 16px;
+    bottom: 72px;
     right: 16px;
   }
   
